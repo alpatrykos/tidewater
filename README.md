@@ -164,9 +164,22 @@ resolution with temporal upscaling, renders clouds at a further 65% scale, uses 
 and a 384² shoreline simulation, and disables screen-space water reflections (sky reflections remain).
 Desktop defaults are unchanged. The Performance panel shows the selected preset and lets you adjust
 render scale and water reflections. Preset URL changes require a reload because simulation and shadow
-resources are allocated during startup. Resolution is manually adjustable, not automatically adaptive.
+resources are allocated during startup. Mobile resolution adapts gradually between 50% and the preset ceiling toward 60 FPS. Adjusting the
+render-scale slider or providing `scale` in the URL selects manual resolution. The Performance panel
+can re-enable adaptation. Mobile caustic texture and mesh dimensions are halved, refraction renders at
+35% of internal resolution, and motion blur is off (its compute passes are skipped).
 
 For device validation, compare `?quality=desktop&noAudio` and `?quality=mobile&noAudio` on the same
 phone, browser, orientation, and camera path after shader compilation. Check the village, beach,
 open ocean, and underwater views, then sustain the run for several minutes to check thermal slowdown.
 A desktop browser at a phone-sized viewport does not establish phone performance.
+
+### Touch controls
+
+Touch controls appear on devices with a coarse primary pointer. Use `?touch` to force them for testing,
+or `?touch=0` to hide them. Drag the left stick to walk, swim, or steer the boat; drag the scene to look.
+Use Rod to equip, hold Cast and release to cast, tap Strike at a bite, and hold Reel during a fight.
+Retrieve brings an empty line back. Interact boards the boat, uses the helm, and talks to vendors.
+Jump / Up, Dive, Sprint, boat camera, Cooler, Light, and Settings have dedicated buttons.
+Movement, looking, and fishing support separate simultaneous pointers. Menus, cancelled touches,
+orientation changes, and focus loss clear held touch actions; interrupted windups do not cast.

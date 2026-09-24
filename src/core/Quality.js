@@ -1,8 +1,8 @@
 // Selected before allocating GPU resources. URL overrides allow repeatable comparisons
 // on the same device; mobile detection is a starting preset, not a GPU benchmark.
 const PRESETS = {
-	desktop: { renderScale: 1, cloudScale: 1, shadowSize: 2048, shoreResolution: 768, reflections: true },
-	mobile: { renderScale: 0.7, cloudScale: 0.65, shadowSize: 1024, shoreResolution: 384, reflections: false },
+	desktop: { renderScale: 1, cloudScale: 1, shadowSize: 2048, shoreResolution: 768, reflections: true, causticScale: 1, refractionScale: 0.5, motionBlur: 0.5 },
+	mobile: { renderScale: 0.7, cloudScale: 0.65, shadowSize: 1024, shoreResolution: 384, reflections: false, causticScale: 0.5, refractionScale: 0.35, motionBlur: 0 },
 };
 
 export function resolveQuality( search = '', device = {} ) {

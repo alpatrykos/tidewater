@@ -1,0 +1,33 @@
+.touch-controls { position: fixed; inset: 0; z-index: 25; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.touch-controls[hidden], .touch-controls [hidden] { display: none !important; }
+.touch-controls button, .touch-stick { pointer-events: auto; touch-action: none; -webkit-touch-callout: none; border: 1px solid #c3e8e466; background: #14333bd9; color: #effffc; box-shadow: 0 3px 14px #0003; }
+.touch-controls button { min-height: 46px; padding: 8px 12px; border-radius: 15px; font: 600 12px system-ui; }
+.touch-controls button.held { background: #37867d; }
+.touch-controls button:disabled { opacity: .4; }
+.touch-stick { position: absolute; left: max(20px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); width: 116px; height: 116px; border-radius: 50%; display: grid; place-items: center; background: #14333b70; }
+.touch-stick span { width: 48px; height: 48px; border-radius: 50%; background: #b4e7dd99; border: 1px solid #efffff99; pointer-events: none; }
+.touch-actions { position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); width: 184px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.touch-primary { background: #24685fe8 !important; }
+.touch-tools { position: absolute; left: max(14px, env(safe-area-inset-left)); top: max(140px, env(safe-area-inset-top)); display: flex; gap: 6px; }
+.touch-hint { position: absolute; left: 16px; bottom: 152px; font: 11px system-ui; color: #fff; text-shadow: 0 1px 3px #000; max-width: 140px; }
+@media (max-width: 600px) { .touch-actions { width: 166px; } .touch-controls button { padding: 7px; } }
+@media (max-height: 480px) { .touch-actions { width: 280px; grid-template-columns: repeat(3, 1fr); } .touch-tools { top: 10px; left: 35%; } }
+
+.has-touch-controls .gm-map { width: 100px; height: 100px; bottom: auto; top: 112px; right: 14px; }
+.has-touch-controls .tw-prompt { bottom: 246px; max-width: calc(100vw - 28px); }
+.has-touch-controls .gm-fight { bottom: 290px; width: min(330px, calc(100vw - 32px)); }
+.has-touch-controls .gm-cast { bottom: 250px; }
+@media (max-height: 480px) {
+ .has-touch-controls .gm-map { width: 76px; height: 76px; top: 60px; }
+ .has-touch-controls .tw-prompt { bottom: 180px; }
+ .has-touch-controls .gm-fight { bottom: 220px; }
+ .has-touch-controls .gm-cast { bottom: 180px; }
+}
+
+.has-touch-controls .tw-rail { display: none; }
+.has-touch-controls .tw-prompt { white-space: normal; width: max-content; box-sizing: border-box; font-size: 12px; }
+.has-touch-controls .tw-prompt-key { flex-shrink: 0; }
+.has-touch-controls .gm-coach { right: 14px; bottom: 360px; }
+
+.touch-photo-exit { position: fixed; z-index: 50; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); border: 1px solid #c3e8e466; border-radius: 14px; padding: 12px 16px; background: #14333bd9; color: white; font: 600 12px system-ui; }
+.touch-photo-exit[hidden] { display: none; }

@@ -159,7 +159,7 @@ export class Game {
 
 			rod.equip( ! rod.equipped );
 			if ( ! rod.equipped ) this.cancelLine();
-			this.toast( rod.equipped ? 'Rod out · hold left mouse to cast' : 'Rod away', 1600 );
+			this.toast( rod.equipped ? ( inp.touchMode ? 'Rod out · hold Cast, then release' : 'Rod out · hold left mouse to cast' ) : 'Rod away', 1600 );
 
 		}
 
@@ -180,7 +180,7 @@ export class Game {
 		}
 
 		// mouse edges (the left button also looks around while the pointer isn't captured)
-		const lmb = inp.mouseDown && inp.enabled, rmb = inp.rightDown && inp.enabled;
+		const lmb = ( inp.mouseDown || inp.touchPrimary ) && inp.enabled, rmb = ( inp.rightDown || inp.touchSecondary ) && inp.enabled;
 		const lDown = lmb && ! this._lmb, lUp = ! lmb && this._lmb, rDown = rmb && ! this._rmb;
 		this._lmb = lmb;
 		this._rmb = rmb;

@@ -368,7 +368,7 @@ export class Guide {
 			this._current = id;
 			this.seen[ id ] = true;
 			this._save();
-			this.coachText.innerHTML = TIPS[ id ];
+			this.coachText.innerHTML = this.game.app.input.touchMode ? TIPS[ id ].replace( /left mouse button/g, 'Cast / Reel button' ) : TIPS[ id ];
 			this.coach.classList.add( 'is-on' );
 			this._coachT = 7.5;
 

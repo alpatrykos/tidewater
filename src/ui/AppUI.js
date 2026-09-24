@@ -231,7 +231,9 @@ export class AppUI {
 		live.addInfo( { label: 'Render size', get: () => `${ app.sceneRenderer.width } × ${ app.sceneRenderer.height }` } );
 		const quality = perf.addFolder( 'Quality', { icon: 'layers' } );
 		quality.addInfo( { label: 'Preset', get: () => app.quality.name === 'mobile' ? 'Mobile (60 FPS target)' : 'Desktop' } );
-		quality.addSlider( { label: 'Render scale', object: s, key: 'renderScale', min: 0.5, max: 1, step: 0.05, format: ( v ) => `${ Math.round( v * 100 ) }%`, tooltip: 'Internal resolution; the temporal upscaler reconstructs the full output resolution.', onChange: ( v ) => app.setRenderScale( v ) } );
+		quality.addSlider( { label: 'Render scale', object: s, key: 'renderScale', min: 0.5, max: 1, step: 0.05, format: ( v ) => `${ Math.round( v * 100 ) }%`, tooltip: 'Internal resolution; the temporal upscaler reconstructs the full output resolution.', onChange: ( v ) => { app.settings.adaptive = s.adaptive = false; app.setRenderScale( v ); } } );
+		s.adaptive = app.settings.adaptive;
+		quality.addToggle( { label: 'Adaptive resolution', object: s, key: 'adaptive', onChange: ( v ) => { app.settings.adaptive = v; app.adaptiveResolution.scale = app.settings.renderScale; app.adaptiveResolution.max = Math.max( app.quality.renderScale, app.settings.renderScale ); app.adaptiveResolution.reset(); } } );
 		quality.addToggle( { label: 'Shadows', object: s, key: 'shadows', onChange: ( v ) => { app.sun.castShadow = v; } } );
 		s.ssr = app.waterMaterial.params.ssr.value > 0.5;
 		quality.addToggle( { label: 'Water reflections', object: s, key: 'ssr', tooltip: 'Screen-space reflections of the pier, boats and hills on the water.', onChange: ( v ) => { app.waterMaterial.params.ssr.value = v ? 1 : 0; } } );
@@ -263,7 +265,14 @@ export class AppUI {
 			: p.mode === 'deck' ? 'On deck'
 			: p.mode === 'swim' ? ( app.camera.position.y < ( app.cameraWaterHeight ?? 0 ) - 0.3 ? 'Diving' : 'Swimming' ) : 'Walking';
 		ui.setMode( mode );
-		if ( p.prompt ) ui.setPrompt( p.prompt.key, p.prompt.text );
+		if ( p.prompt ) {
+			let { key, text } = p.prompt;
+			if ( app.input.touchMode ) {
+				key = ( { E: 'Interact', R: 'Rod', LMB: app.game.fight ? 'Reel' : 'Cast', RMB: 'Retrieve', Space: 'Up' } )[ key ] || key;
+				text = text.replace( /right-click/g, 'tap Retrieve' ).replace( /R  put the rod away/g, 'Rod to put away' ).replace( /V  camera/g, 'Boat camera' );
+			}
+			ui.setPrompt( key, text );
+		}
 		else ui.setPrompt( null );
 
 		const b = app.boatCtl;

@@ -5,6 +5,10 @@ export class Input {
 
 		this.dom = dom;
 		this.keys = new Set();
+		this.touchKeys = new Set();
+		this.touchPrimary = false;
+		this.touchSecondary = false;
+		this.touchMode = false;
 		this.pressed = new Set();
 		this.look = { x: 0, y: 0 };
 		this.wheel = 0;
@@ -22,10 +26,12 @@ export class Input {
 
 		} );
 		window.addEventListener( 'keyup', ( e ) => this.keys.delete( e.code ) );
-		window.addEventListener( 'blur', () => this.keys.clear() );
+		window.addEventListener( 'blur', () => this.reset() );
+		document.addEventListener( 'visibilitychange', () => { if ( document.hidden ) this.reset(); } );
 
 		dom.addEventListener( 'mousedown', ( e ) => {
 
+			if ( this.touchMode ) return;
 			if ( e.button === 0 ) this.mouseDown = true;
 			if ( e.button === 2 ) this.rightDown = true;
 
@@ -64,13 +70,30 @@ export class Input {
 
 	requestLock() {
 
-		if ( ! this.locked ) this.dom.requestPointerLock?.()?.catch?.( () => {} );
+		if ( ! this.touchMode && ! this.locked ) this.dom.requestPointerLock?.()?.catch?.( () => {} );
 
+	}
+
+	setTouchKey( code, held ) {
+		if ( held && ! this.touchKeys.has( code ) && ! this.keys.has( code ) ) this.pressed.add( code );
+		if ( held ) this.touchKeys.add( code ); else this.touchKeys.delete( code );
+	}
+
+	clearTouch() {
+		for ( const code of this.touchKeys ) if ( ! this.keys.has( code ) ) this.pressed.delete( code );
+		this.touchKeys.clear();
+		this.touchPrimary = this.touchSecondary = false;
+		this.look.x = this.look.y = 0;
+	}
+
+	reset() {
+		this.keys.clear(); this.pressed.clear(); this.clearTouch();
+		this.mouseDown = this.rightDown = false; this.wheel = 0;
 	}
 
 	down( code ) {
 
-		return this.enabled && this.keys.has( code );
+		return this.enabled && ( this.keys.has( code ) || this.touchKeys.has( code ) );
 
 	}
 

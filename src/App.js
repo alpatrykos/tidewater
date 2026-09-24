@@ -8,6 +8,7 @@ import { Input } from './core/Input.js';
 import { CDLOD } from './core/CDLOD.js';
 import { G } from './core/Globals.js';
 import { Profiler } from './core/Profiler.js';
+import { AdaptiveResolution } from './core/AdaptiveResolution.js';
 import { resolveQuality } from './core/Quality.js';
 import { SceneRenderer, LAYERS } from './core/SceneRenderer.js';
 import { DEPTH_FORMAT } from './engine/render/SceneRenderer.js';
@@ -183,7 +184,7 @@ export class App {
 		this.surface.detail = this.seaDetail;
 		this.shore = new ShoreWaves( this.terrainGPU );
 		this.surface.shore = this.shore;
-		this.caustics = qs.has( 'noCaustics' ) ? null : new Caustics( renderer, this.fft );
+		this.caustics = qs.has( 'noCaustics' ) ? null : new Caustics( renderer, this.fft, this.quality.causticScale );
 		if ( this.caustics ) this.caustics.detail = this.seaDetail;
 
 		if ( ! qs.has( 'noSim' ) ) {
@@ -229,7 +230,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		installGroundBounce( { terrain: this.terrainGPU, clouds: this.clouds } );
 		this.sceneRenderer = new SceneRenderer( engine.meshRenderer, scene, camera );
 		// the water's refraction source: the scene below the water only, half resolution
-		this.refraction = new RefractionPass( { meshRenderer: engine.meshRenderer, scene, camera, sceneRenderer: this.sceneRenderer, scale: 0.5 } );
+		this.refraction = new RefractionPass( { meshRenderer: engine.meshRenderer, scene, camera, sceneRenderer: this.sceneRenderer, scale: this.quality.refractionScale } );
 		this.sceneRenderer.onBeforeWater = () => this.refraction.render( G.seaLevel.value );
 		if ( this.sky.background ) this.sceneRenderer.background = this.sky.background;
 		// screen-space contact shadows for the sun from last frame's opaque depth (foliage only casts)
@@ -341,6 +342,9 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		G.exposure.value = this.settings.exposure;
 		this.waterMaterial.params.ssr.value = this.quality.reflections ? 1 : 0;
 		this.setRenderScale( this.settings.renderScale );
+		this.post.motionBlur.shutter.value = this.quality.motionBlur;
+		this.settings.adaptive = this.quality.name === 'mobile' && ! qs.has( 'scale' );
+		this.adaptiveResolution = new AdaptiveResolution( { initial: this.settings.renderScale } );
 
 		// ---------------------------------------------------------------- audio
 		// recorded field recordings (public/audio, credits in public/audio/CREDITS.md); ?noAudio turns it off
@@ -595,6 +599,11 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 
 	frame( dt ) {
 
+		if ( this.touchControls ) this.touchControls.update();
+		if ( this.settings.adaptive && this.adaptiveResolution && ! document.hidden && this.engine.frame > 0 ) {
+			const scale = this.adaptiveResolution.update( dt );
+			if ( scale !== null ) this.setRenderScale( scale );
+		}
 		const t0 = performance.now();
 		this._frame( dt );
 		const ms = performance.now() - t0;
