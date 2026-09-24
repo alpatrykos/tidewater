@@ -8,6 +8,7 @@ import { Input } from './core/Input.js';
 import { CDLOD } from './core/CDLOD.js';
 import { G } from './core/Globals.js';
 import { Profiler } from './core/Profiler.js';
+import { resolveQuality } from './core/Quality.js';
 import { SceneRenderer, LAYERS } from './core/SceneRenderer.js';
 import { DEPTH_FORMAT } from './engine/render/SceneRenderer.js';
 import { installDebugViews } from './core/DebugViews.js';
@@ -73,12 +74,13 @@ export class App {
 
 	constructor() {
 
+		this.quality = resolveQuality( location.search, navigator );
 		this.settings = {
 			timeOfDay: 16.2,
 			sunAzimuth: 0, // degrees: turns the sun's daily path about the vertical
 			timeSpeed: 0, // hours per real second
 			exposure: 0.55,
-			renderScale: 1, // internal resolution (the temporal upscaler reconstructs the output), Performance tab
+			renderScale: this.quality.renderScale, // internal resolution (the temporal upscaler reconstructs the output), Performance tab
 		};
 		this.qs = new URLSearchParams( location.search );
 
@@ -128,7 +130,7 @@ export class App {
 		// contact-hardening filter sized by the sun's disc on the near cascade. Each cascade's depth range
 		// is its light margin (200 m) + its extent, which keeps the depth bias small in metres.
 		// Shadows come from the opaque and the late (transparent-pass) layers.
-		this.csm = this.shadows = new SunShadows( { size: 2048, splits: [ 10, 60, 400 ], lightMargin: 200, normalBias: [ 0.015, 0.06, 0.3 ], bias: 0.00002 } );
+		this.csm = this.shadows = new SunShadows( { size: this.quality.shadowSize, splits: [ 10, 60, 400 ], lightMargin: 200, normalBias: [ 0.015, 0.06, 0.3 ], bias: 0.00002 } );
 		this.shadows.layerMask = ( 1 << LAYERS.OPAQUE ) | ( 1 << LAYERS.TRANSPARENT );
 
 		this.environment = new Environment( renderer, scene, this.sky );
@@ -186,7 +188,7 @@ export class App {
 
 		if ( ! qs.has( 'noSim' ) ) {
 
-			this.shoreSim = new ShoreSim( renderer, { terrainGPU: this.terrainGPU, shore: this.shore } );
+			this.shoreSim = new ShoreSim( renderer, { terrainGPU: this.terrainGPU, shore: this.shore, res: this.quality.shoreResolution } );
 			this.surface.shoreSim = this.shoreSim;
 			// WGSL: fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f (x = wetness, y = sand foam)
 			this.terrain.wetness = {
@@ -337,7 +339,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		} );
 		this.post = new PostFX( renderer, { sceneRenderer: this.sceneRenderer, camera, underwater: this.underwater, clouds: this.clouds, sunDir: this.atmosphere.sunDir, haze: this.haze } );
 		G.exposure.value = this.settings.exposure;
-		if ( qs.has( 'scale' ) ) this.settings.renderScale = Number( qs.get( 'scale' ) ) || 1;
+		this.waterMaterial.params.ssr.value = this.quality.reflections ? 1 : 0;
 		this.setRenderScale( this.settings.renderScale );
 
 		// ---------------------------------------------------------------- audio
@@ -710,10 +712,11 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 	// the scene / post / cloud targets, so nothing adjusts it automatically.
 	setRenderScale( v ) {
 
+		if ( ! Number.isFinite( v ) ) return;
 		const scale = MathUtils.clamp( Math.round( v * 20 ) / 20, 0.5, 1 );
 		this.settings.renderScale = scale;
 		this.post.setScale( scale );
-		if ( this.clouds ) this.clouds.resolutionScale = scale;
+		if ( this.clouds ) this.clouds.resolutionScale = scale * this.quality.cloudScale;
 
 	}
 

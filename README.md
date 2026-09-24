@@ -14,8 +14,8 @@ breach. It runs directly on WebGPU and WGSL with its own small rendering engine,
 ## Requirements
 
 - A browser with WebGPU: a recent Chrome, Edge or Safari.
-- A capable GPU. It targets 60 fps at 2560×1267 on an Apple M5 Pro, and dynamic resolution scales
-  the render down on slower machines.
+- A capable GPU. It targets 60 fps at 2560×1267 on an Apple M5 Pro, with a separate mobile preset targeting 60 fps on recent flagship phones. Actual mobile performance
+  depends on the device and browser; this target has not yet been verified on physical phones.
 - The first load compiles several hundred shaders, which can take a minute or more. Later visits are
   faster because the browser caches them.
 
@@ -113,6 +113,9 @@ Add these to the URL, for example `?fly&noAudio`:
 
 | Option | Effect |
 |---|---|
+| `quality=mobile` | Force the mobile preset (selected automatically on phones and iPads) |
+| `quality=desktop` | Force the original desktop preset |
+| `scale=0.7` | Override internal render scale (0.5–1) |
 | `fly` | Start in the free camera |
 | `noAudio` | Disable sound |
 | `noClouds` | Skip the volumetric clouds |
@@ -153,3 +156,17 @@ Every push to `main` deploys to GitHub Pages through `.github/workflows/deploy.y
 The code is released under the MIT license; see [LICENSE](LICENSE). Third-party assets (CC0 audio from
 Freesound, CC0 scans from Poly Haven, MIT characters from Microsoft Rocketbox, OFL / Apache fonts) and
 technique references are listed in [CREDITS.md](CREDITS.md).
+
+## Mobile rendering
+
+The mobile preset keeps the island, FFT ocean, clouds, and gameplay. It starts at 70% internal
+resolution with temporal upscaling, renders clouds at a further 65% scale, uses 1024² shadow maps
+and a 384² shoreline simulation, and disables screen-space water reflections (sky reflections remain).
+Desktop defaults are unchanged. The Performance panel shows the selected preset and lets you adjust
+render scale and water reflections. Preset URL changes require a reload because simulation and shadow
+resources are allocated during startup. Resolution is manually adjustable, not automatically adaptive.
+
+For device validation, compare `?quality=desktop&noAudio` and `?quality=mobile&noAudio` on the same
+phone, browser, orientation, and camera path after shader compilation. Check the village, beach,
+open ocean, and underwater views, then sustain the run for several minutes to check thermal slowdown.
+A desktop browser at a phone-sized viewport does not establish phone performance.
