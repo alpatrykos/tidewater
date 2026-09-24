@@ -226,7 +226,7 @@ fn breakersSprayShadow( p: vec3f, seedTag: f32 ) -> f32 {
 		for ( let c = 1; c < fft.cascades; c ++ ) {
 
 			const L = fft.sizes[ c ];
-			const texel = L / 256;
+			const texel = L / fft.size;
 			const level = Math.max( Math.log2( 0.35 / texel ) + 0.7, 0 );
 			const d0 = Math.min( 40, L * 0.08 );
 			const floorAmt = [ 0.0, 0.05, 0.25, 0.5 ][ c ] ?? 0.5;

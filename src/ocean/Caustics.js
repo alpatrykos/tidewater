@@ -76,7 +76,7 @@ struct CauOut { @builtin( position ) pos: vec4f, @location( 0 ) vOld: vec2f, @lo
 	// vertex of a ${ this.grid } x ${ this.grid } quad grid over [-margin, 1 + margin]^2 (indexed)
 	let cx = vi % ${ this.grid + 1 }u; let cy = vi / ${ this.grid + 1 }u;
 	let uv = vec2f( vec2u( cx, cy ) ) / ${ this.grid }.0 * ${ ( 1 + 2 * margin ).toFixed( 4 ) } - ${ margin.toFixed( 4 ) };
-	let d = textureSampleLevel( oceanDerivatives, smpLinearRepeat, uv, ${ cascade }, ${ slopeLevel.toFixed( 3 ) } );
+	let d = textureSampleLevel( oceanDerivatives, smpLinearRepeat, uv, ${ cascade }, ${ fft.mipLevel( slopeLevel ).toFixed( 3 ) } );
 	let s = vec2f( d.x / max( d.z + 1.0, 0.3 ), d.y / max( d.w + 1.0, 0.3 ) );
 	let n = normalize( vec3f( - s.x, 1.0, - s.y ) );
 	let T = refract( - frame.sunDir, n, 1.0 / 1.333 );

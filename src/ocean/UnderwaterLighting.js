@@ -4,7 +4,6 @@ import { ComputeKernel } from '../engine/gpu/Compute.js';
 import { Vector2 } from '../engine/math/index.js';
 import { commonModule } from '../engine/render/wgsl/common.js';
 import { surfaceModule } from '../engine/render/wgsl/lighting.js';
-import { FFT_SIZE } from './OceanFFT.js';
 
 // The wave terms the lighting needs at a point depend on its xz only (surface height, slope and foam
 // of the long waves, the mean level, the gust / slick factor of the caustics). They are baked once
@@ -61,7 +60,7 @@ export function installUnderwaterLighting( { fft, caustics, clouds = null, terra
 struct UnderwaterLongWaves { height: f32, slope: vec2f, foam: f32 };
 
 // long waves at xz: height, slope and foam from the coarse FFT cascades and the shore waves
-// texel: the bake's texel size (m); the cascades are read no finer than it (level >= 2)
+// texel: the bake's texel size (m); the cascades are read no finer than it (minimum filter footprint follows the FFT grid)
 fn underwaterLongWaves( xz: vec2f, texel: f32 ) -> UnderwaterLongWaves {
 	let seaDepth = ${ T ? 'frame.seaLevel - terrainHeightAt( xz )' : '50.0' };
 	var h = 0.0;
@@ -69,7 +68,7 @@ fn underwaterLongWaves( xz: vec2f, texel: f32 ) -> UnderwaterLongWaves {
 	for ( var c = 0; c < ${ C3 }; c++ ) {
 		let uv = xz / ocean.sizes[ c ].x;
 		let att = ${ surface ? 'waterSurfaceCascadeAttenuation( c, seaDepth )' : '1.0' };
-		let lvl = max( 2.0, log2( texel * ${ FFT_SIZE }.0 / ocean.sizes[ c ].x ) );
+		let lvl = max( ${ fft.mipLevel( 2 ).toFixed( 1 ) }, log2( texel * ${ fft.size }.0 / ocean.sizes[ c ].x ) );
 		h += textureSampleLevel( oceanDisplacement, smpLinearRepeat, uv, c, lvl ).y * att;
 		if ( c < 2 ) {
 			let d = textureSampleLevel( oceanDerivatives, smpLinearRepeat, uv, c, lvl );
@@ -101,7 +100,7 @@ fn underwaterSigT() -> vec3f { return frame.waterAbsorption + frame.waterScatter
 fn underwaterMeanLevel( xz: vec2f ) -> f32 {
 	var h = 0.0;
 	for ( var c = 0; c < ${ C2 }; c++ ) {
-		h += textureSampleLevel( oceanDisplacement, smpLinearRepeat, xz / ocean.sizes[ c ].x, c, 3.0 ).y;
+		h += textureSampleLevel( oceanDisplacement, smpLinearRepeat, xz / ocean.sizes[ c ].x, c, ${ fft.mipLevel( 3 ).toFixed( 1 ) } ).y;
 	}
 ${ T ? '	h *= smoothstep( 0.0, 3.0, frame.seaLevel - terrainHeightAt( xz ) );' : '' }
 	return frame.seaLevel + h;

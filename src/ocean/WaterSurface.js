@@ -1,6 +1,5 @@
 import { UniformBlock, ShaderModule } from '../engine/webgpu.js';
 import { commonModule } from '../engine/render/wgsl/common.js';
-import { FFT_SIZE } from './OceanFFT.js';
 
 // Combines every contribution to the water surface: FFT cascades (deep water),
 // shoreline waves, and the interactive wake. Provides the WGSL used by the ocean
@@ -121,7 +120,7 @@ fn waterSurfaceCascadeAttenuation( c: i32, depth: f32 ) -> f32 {
 		for ( let c = 0; c < C; c ++ ) {
 
 			const L = fft.sizes[ c ];
-			const texel = L / FFT_SIZE;
+			const texel = L / fft.size;
 			cascadesV += /* wgsl */`
 	{
 		// band-limit to the mesh spacing to avoid aliasing / swimming
@@ -131,7 +130,7 @@ fn waterSurfaceCascadeAttenuation( c: i32, depth: f32 ) -> f32 {
 		let s = textureSampleLevel( oceanDisplacement, smpLinearRepeat, uv, ${ c }, level );
 		disp += s.xyz * att;
 		// foam coverage is smooth enough to evaluate per vertex (sampled at a fixed detail level)
-		let fv = textureSampleLevel( oceanDisplacement, smpLinearRepeat, uv, ${ c }, max( level, 1.5 ) ).w;
+		let fv = textureSampleLevel( oceanDisplacement, smpLinearRepeat, uv, ${ c }, max( level, ${ f( fft.mipLevel( 1.5 ) ) } ) ).w;
 		foam += fv * ${ f( this.foamWeights[ c ] ?? 0.25 ) } * att;
 	}`;
 
@@ -241,7 +240,7 @@ ${ T ? /* wgsl */`
 		const cN = C - 1;
 		const Lf = fft.sizes[ cN ];
 		const k1 = 7.3, k2 = 3.1;
-		const texel1 = Lf / k1 / FFT_SIZE, texel2 = Lf / k2 / FFT_SIZE;
+		const texel1 = Lf / k1 / fft.size, texel2 = Lf / k2 / fft.size;
 		const rot = ( v, a ) => `vec2f( ${ v }.x * ${ f( Math.cos( a ) ) } - ${ v }.y * ${ f( Math.sin( a ) ) }, ${ v }.x * ${ f( Math.sin( a ) ) } + ${ v }.y * ${ f( Math.cos( a ) ) } )`;
 
 		const fragment = /* wgsl */`

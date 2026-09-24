@@ -13,7 +13,7 @@ export class AdaptiveResolution {
 		this.fastWindows = 0;
 	}
 	update( dt ) {
-		if ( ! Number.isFinite( dt ) || dt <= 0 || dt >= 0.1 ) { this.reset(); return null; }
+		if ( ! Number.isFinite( dt ) || dt <= 0 || dt >= 1 ) { this.reset(); return null; }
 		if ( this.cooldown > 0 ) { this.cooldown -= dt; return null; }
 		this.elapsed += dt;
 		this.frames++;

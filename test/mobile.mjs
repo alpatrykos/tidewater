@@ -28,4 +28,19 @@ assert.equal( scale, 0.7, 'sustained headroom restores resolution without exceed
 const b = new AdaptiveResolution( { initial: 0.7, max: 0.7 } );
 assert.equal( b.update( 2 ), null, 'background pauses must not lower quality' );
 assert.equal( b.update( NaN ), null );
-console.log( 'Mobile input release and adaptive resolution tests passed' );
+// A 5 FPS scene must still reduce quality instead of being mistaken for a pause.
+const slow = new AdaptiveResolution( { initial: 0.7 } );
+let slowScale = 0.7;
+for ( let i = 0; i < 300; i++ ) slowScale = slow.update( 0.2 ) ?? slowScale;
+assert.equal( slowScale, 0.5 );
+const { Engine } = await import( '../src/engine/Engine.js' );
+let tick;
+globalThis.requestAnimationFrame = cb => { tick = cb; return 1; };
+const engine = new Engine( null );
+let measured;
+engine.start( ( dt, elapsed, raw ) => { measured = { dt, raw }; } );
+tick( performance.now() + 250 );
+assert.equal( measured.dt, 0.1, 'physics still clamps large steps' );
+assert.ok( measured.raw >= 0.25, 'frame diagnostics receive the actual elapsed time' );
+
+console.log( 'Mobile input, adaptive resolution, and raw frame timing tests passed' );

@@ -174,7 +174,7 @@ export class App {
 
 		// ---------------------------------------------------------------- ocean
 		await progress( 0.3, 'Simulating the ocean…' );
-		this.fft = new OceanFFT( renderer );
+		this.fft = new OceanFFT( renderer, { size: this.quality.fftSize } );
 		if ( this.reef.setOcean ) this.reef.setOcean( this.fft ); // coral / sea fan sway follows the simulated swell
 		this.foamTexture = createFoamTexture( renderer );
 		this.oceanLOD = new CDLOD( { gridSize: Number( qs.get( 'G' ) || 32 ), leafSize: 8, levels: 12, minY: - 25, maxY: 25 } );
@@ -566,7 +566,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 
 	start() {
 
-		this.engine.start( ( dt, t ) => this.frame( dt, t ) );
+		this.engine.start( ( dt, t, rawDt ) => this.frame( dt, rawDt ) );
 
 	}
 
@@ -597,11 +597,13 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 
 	}
 
-	frame( dt ) {
+	frame( dt, rawDt = dt ) {
 
+		this.frameMs = rawDt * 1000;
+		this.updateFPS( rawDt );
 		if ( this.touchControls ) this.touchControls.update();
 		if ( this.settings.adaptive && this.adaptiveResolution && ! document.hidden && this.engine.frame > 0 ) {
-			const scale = this.adaptiveResolution.update( dt );
+			const scale = this.adaptiveResolution.update( rawDt );
 			if ( scale !== null ) this.setRenderScale( scale );
 		}
 		const t0 = performance.now();
@@ -616,7 +618,6 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		GPU.beginFrame();
 		FrameUniforms.fields.frameIndex.value = GPU.frame;
 		const s = this.settings;
-		this.updateFPS( dt );
 		G.dt.value = dt;
 		G.time.value += dt;
 		if ( s.timeSpeed !== 0 ) s.timeOfDay = ( s.timeOfDay + dt * s.timeSpeed + 24 ) % 24;

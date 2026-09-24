@@ -1,12 +1,13 @@
 import { Vector4, MathUtils } from '../engine/index.js';
 import { GPU, UniformBlock, Texture, StorageBuffer, ShaderModule, ComputeKernel, GRAVITY } from '../engine/webgpu.js';
+import { ComputeMips } from './ComputeMips.js';
 import { commonModule } from '../engine/render/wgsl/common.js';
 
 // Multi-cascade FFT ocean (Tessendorf) with a Horvath/JONSWAP spectrum.
 //
 // Each frame runs exactly two compute dispatches for all cascades:
 //   1. row pass: time-evolves the spectrum (h0 -> h(k,t)), builds 4 packed complex
-//      fields and performs a 256-point radix-2 IFFT per row in workgroup memory.
+//      fields and performs a configurable radix-2 IFFT per row in workgroup memory.
 //   2. column pass: IFFT per column, sign correction, Jacobian based foam
 //      accumulation, and writes displacement / derivative array textures.
 //
@@ -24,9 +25,6 @@ import { commonModule } from '../engine/render/wgsl/common.js';
 //   fn oceanSampleDisplacementWeighted( xz: vec2f, level: f32, w: vec4f ) -> vec3f   per-cascade weights
 
 export const FFT_SIZE = 256;
-const N = FFT_SIZE;
-const LOG2N = 8;
-const HALF = N / 2;
 
 // Non-integer ratios between cascade sizes avoid visible repetition.
 export const DEFAULT_CASCADE_SIZES = [ 733, 157, 33.3, 7.1 ];
@@ -51,17 +49,17 @@ export class WaveSystem {
 }
 
 // WGSL shared by the kernels: PCG hash, complex helpers
-const FFT_COMMON = /* wgsl */`
+const fftCommon = ( N ) => /* wgsl */`
 const FFT_N: u32 = ${ N }u;
-const FFT_HALF: u32 = ${ HALF }u;
+const FFT_HALF: u32 = ${ N / 2 }u;
 const FFT_G: f32 = ${ GRAVITY };
 
-fn fftBitReverse8( v: u32 ) -> u32 {
+fn fftBitReverse( v: u32 ) -> u32 {
 	var r = v;
 	r = ( ( r & 0x55u ) << 1u ) | ( ( r >> 1u ) & 0x55u );
 	r = ( ( r & 0x33u ) << 2u ) | ( ( r >> 2u ) & 0x33u );
 	r = ( ( r & 0x0Fu ) << 4u ) | ( ( r >> 4u ) & 0x0Fu );
-	return r;
+	return r >> ${ 8 - Math.log2( N ) }u;
 }
 
 // complex multiply of two packed complex numbers (v.xy, v.zw) by scalar complex w
@@ -82,6 +80,9 @@ export class OceanFFT {
 
 	constructor( renderer, options = {} ) {
 
+		const N = options.size ?? FFT_SIZE;
+		if ( ! [ 64, 128, 256 ].includes( N ) ) throw new RangeError( 'OceanFFT size must be 64, 128 or 256' );
+		this.size = N;
 		this.renderer = renderer;
 		this.cascades = options.cascades ?? 4;
 		this.sizes = ( options.sizes ?? DEFAULT_CASCADE_SIZES ).slice( 0, this.cascades );
@@ -129,8 +130,8 @@ export class OceanFFT {
 		this.tmp = new StorageBuffer( { label: 'fftTmp', count: total * 2, type: 'vec4f' } );
 		this.foam = new StorageBuffer( { label: 'fftFoam', count: total, type: 'f32' } );
 		// level 0 of both textures (interleaved) for the compute mip chain, and the 8x8 level 5
-		this.mipSrc = new StorageBuffer( { label: 'fftMipSrc', count: total * 2, type: 'vec4f' } );
-		this.mipMid = new StorageBuffer( { label: 'fftMipMid', count: 64 * C * 2, type: 'vec4f' } );
+		this.mipSrc = N === FFT_SIZE ? new StorageBuffer( { label: 'fftMipSrc', count: total * 2, type: 'vec4f' } ) : null;
+		this.mipMid = N === FFT_SIZE ? new StorageBuffer( { label: 'fftMipMid', count: 64 * C * 2, type: 'vec4f' } ) : null;
 
 		const makeTex = ( name ) => new Texture( {
 			label: name, width: N, height: N, depth: C, dimension: '2d-array', format: 'rgba16float',
@@ -187,6 +188,13 @@ fn oceanSampleDisplacementWeighted( xz: vec2f, level: f32, w: vec4f ) -> vec3f {
 
 	}
 
+	// Convert filtering tuned for the reference grid to the same world-space footprint.
+	mipLevel( referenceLevel ) {
+
+		return Math.max( 0, referenceLevel + Math.log2( this.size / FFT_SIZE ) );
+
+	}
+
 	setCascadeSizes( sizes ) {
 
 		this.sizes = sizes.slice( 0, this.cascades );
@@ -233,6 +241,9 @@ fn oceanSampleDisplacementWeighted( xz: vec2f, level: f32, w: vec4f ) -> vec3f {
 	}
 
 	_buildKernels() {
+
+		const N = this.size, HALF = N / 2, LOG2N = Math.log2( N );
+		const FFT_COMMON = fftCommon( N );
 
 		const C = this.cascades;
 		const oceanU = { ocean: { uniform: this.params } };
@@ -445,7 +456,7 @@ fn main( @builtin( local_invocation_id ) lid: vec3u, @builtin( workgroup_id ) wi
 		let a = - ( kx * kx * ik ); let b = - ( kz * kz * ik );
 		let c3 = vec2f( a * hr - b * hi, a * hi + b * hr );
 
-		let r = fftBitReverse8( x ) * 2u;
+		let r = fftBitReverse( x ) * 2u;
 		fftShared[ r ] = vec4f( c0, c1 );
 		fftShared[ r + 1u ] = vec4f( c2, c3 );
 	}
@@ -468,7 +479,7 @@ ${ stages }
 			label: 'Ocean FFT Columns',
 			modules: [ commonModule ],
 			bindings: {
-				...oceanU, tmp: rw( this.tmp ), foam: rw( this.foam ), mipSrc: rw( this.mipSrc ),
+				...oceanU, tmp: rw( this.tmp ), foam: rw( this.foam ), ...( this.mipSrc ? { mipSrc: rw( this.mipSrc ) } : {} ),
 				dispOut: level( this.displacementTexture, 0 ), derivOut: level( this.derivativeTexture, 0 ),
 			},
 			workgroupSize: [ HALF, 1, 1 ],
@@ -483,7 +494,7 @@ fn main( @builtin( local_invocation_id ) lid: vec3u, @builtin( workgroup_id ) wi
 	for ( var e = 0u; e < 2u; e++ ) {
 		let y = t + e * FFT_HALF;
 		let idx = base + y * ${ N }u + col;
-		let r = fftBitReverse8( y ) * 2u;
+		let r = fftBitReverse( y ) * 2u;
 		fftShared[ r ] = tmp[ idx * 2u ];
 		fftShared[ r + 1u ] = tmp[ idx * 2u + 1u ];
 	}
@@ -520,11 +531,18 @@ ${ stages }
 		let vDeriv = vec4f( Dyx, Dyz, lambda * Dxx, lambda * Dzz );
 		textureStore( dispOut, uv, c, vDisp );
 		textureStore( derivOut, uv, c, vDeriv );
-		mipSrc[ idx * 2u ] = vDisp;
-		mipSrc[ idx * 2u + 1u ] = vDeriv;
+		${ this.mipSrc ? 'mipSrc[ idx * 2u ] = vDisp; mipSrc[ idx * 2u + 1u ] = vDeriv;' : '' }
 	}
 }`,
 		} );
+
+		// Smaller mobile grids reuse the size-independent texture mip generator.
+		if ( N !== FFT_SIZE ) {
+
+			this.textureMips = [ this.displacementTexture, this.derivativeTexture ].map( ( tex ) => new ComputeMips( tex, 'Ocean' ) );
+			return;
+
+		}
 
 		// ---- mip chains in compute (instead of 2 textures x 4 layers x 8 levels of render passes)
 		// A: 16x16 threads per 32x32 texel tile of level 0 -> levels 1..5 through workgroup memory
@@ -609,6 +627,8 @@ ${ reduce( 's7', null, 1, 8, t ) }
 
 	update( dt ) {
 
+		const N = this.size;
+
 		const C = this.cascades;
 
 		if ( this.needsSpectrum ) {
@@ -626,8 +646,9 @@ ${ reduce( 's7', null, 1, 8, t ) }
 
 			this.rowKernel.dispatch( [ N, C, 1 ], { pass } );
 			this.columnKernel.dispatch( [ N, C, 1 ], { pass } );
-			for ( const k of this.mipKernelsA ) k.dispatch( [ N / 32, N / 32, C ], { pass } );
-			for ( const k of this.mipKernelsB ) k.dispatch( [ 1, 1, C ], { pass } );
+			for ( const k of this.textureMips ?? [] ) k.dispatch( pass );
+			for ( const k of this.mipKernelsA ?? [] ) k.dispatch( [ N / 32, N / 32, C ], { pass } );
+			for ( const k of this.mipKernelsB ?? [] ) k.dispatch( [ 1, 1, C ], { pass } );
 
 		} );
 

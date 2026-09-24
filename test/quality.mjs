@@ -19,4 +19,8 @@ for ( const scale of [ 'NaN', 'Infinity', '', '-Infinity' ] ) {
 assert.equal( resolveQuality( '?scale=0.01', {} ).renderScale, 0.5 );
 assert.equal( resolveQuality( '?scale=2', {} ).renderScale, 1 );
 assert.equal( resolveQuality( '?quality=mobile&scale=0.8', {} ).renderScale, 0.8 );
+assert.equal( resolveQuality( '?quality=mobile' ).fftSize, 64 );
+assert.equal( resolveQuality( '?quality=desktop' ).fftSize, 256 );
+assert.equal( resolveQuality( '?fft=128' ).fftSize, 128 );
+for ( const value of [ '96', 'NaN', '0', '' ] ) assert.equal( resolveQuality( '?quality=mobile&fft=' + value ).fftSize, 64 );
 console.log( 'Quality selection and render-scale validation passed' );

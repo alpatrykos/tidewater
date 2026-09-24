@@ -79,7 +79,7 @@ fn waterQueryCameraState() -> vec4f { return waterQueryResults[ 0 ]; }
 		let casc = '';
 		for ( let c = 0; c < C; c ++ ) {
 
-			casc += `\td += textureSampleLevel( oceanDisplacement, smpLinearRepeat, x0 / ocean.sizes[ ${ c } ].x, ${ c }, ${ c === C - 1 ? '2.0' : '0.0' } ).xyz * waterSurfaceCascadeAttenuation( ${ c }, depth );\n`;
+			casc += `\td += textureSampleLevel( oceanDisplacement, smpLinearRepeat, x0 / ocean.sizes[ ${ c } ].x, ${ c }, ${ fft.mipLevel( c === C - 1 ? 2 : 0 ).toFixed( 1 ) } ).xyz * waterSurfaceCascadeAttenuation( ${ c }, depth );\n`;
 
 		}
 

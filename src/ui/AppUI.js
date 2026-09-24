@@ -51,7 +51,7 @@ export class AppUI {
 			contrast: app.post.params.contrast.value,
 			grain: app.post.params.grain.value,
 			renderScale: app.settings.renderScale,
-			shadows: true,
+			shadows: app.shadows.enabled,
 		};
 
 		const spectrum = () => {
@@ -234,7 +234,7 @@ export class AppUI {
 		quality.addSlider( { label: 'Render scale', object: s, key: 'renderScale', min: 0.5, max: 1, step: 0.05, format: ( v ) => `${ Math.round( v * 100 ) }%`, tooltip: 'Internal resolution; the temporal upscaler reconstructs the full output resolution.', onChange: ( v ) => { app.settings.adaptive = s.adaptive = false; app.setRenderScale( v ); } } );
 		s.adaptive = app.settings.adaptive;
 		quality.addToggle( { label: 'Adaptive resolution', object: s, key: 'adaptive', onChange: ( v ) => { app.settings.adaptive = v; app.adaptiveResolution.scale = app.settings.renderScale; app.adaptiveResolution.max = Math.max( app.quality.renderScale, app.settings.renderScale ); app.adaptiveResolution.reset(); } } );
-		quality.addToggle( { label: 'Shadows', object: s, key: 'shadows', onChange: ( v ) => { app.sun.castShadow = v; } } );
+		quality.addToggle( { label: 'Shadows', object: s, key: 'shadows', onChange: ( v ) => { app.shadows.enabled = v; } } );
 		s.ssr = app.waterMaterial.params.ssr.value > 0.5;
 		quality.addToggle( { label: 'Water reflections', object: s, key: 'ssr', tooltip: 'Screen-space reflections of the pier, boats and hills on the water.', onChange: ( v ) => { app.waterMaterial.params.ssr.value = v ? 1 : 0; } } );
 
@@ -247,7 +247,7 @@ export class AppUI {
 
 		const app = this.app;
 		const ui = this.ui;
-		ui.setStats( { fps: app.fps, frameMs: dt * 1000 } );
+		ui.setStats( { fps: app.fps, frameMs: app.frameMs ?? dt * 1000 } );
 		this.s.renderScale = app.post.scale;
 
 		const p = app.player;

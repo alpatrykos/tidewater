@@ -82,10 +82,10 @@ export class Engine {
 		const loop = ( t ) => {
 
 			this.clock.update( t );
-			let dt = this.clock.getDelta();
-			if ( dt > 0.1 ) dt = 0.1;
+			const rawDt = this.clock.getDelta();
+			const dt = Math.min( rawDt, 0.1 );
 			this.frame ++;
-			update( dt, this.clock.getElapsed() );
+			update( dt, this.clock.getElapsed(), rawDt );
 			this._raf = requestAnimationFrame( loop );
 
 		};
