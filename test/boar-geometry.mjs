@@ -4,11 +4,20 @@ import assert from 'node:assert/strict';
 // or floating. Validate the actual geometry consumed by the renderer, without GPU mocks.
 const shapes = await import( '../src/world/wildlife/BoarShapes.js' ).catch( () => null );
 assert.equal( typeof shapes?.buildBoar, 'function', 'the boar needs a renderable geometry template' );
+assert.equal( typeof shapes?.sampleBoarBody, 'function', 'fur attachment needs the same sculpted body surface as the visible mesh' );
+for ( const [ angle, axis, sign ] of [ [ 0, 0, 1 ], [ Math.PI, 0, - 1 ], [ Math.PI / 2, 1, 1 ] ] ) {
+
+	const sample = shapes.sampleBoarBody( 0.12, angle );
+	assert.ok( sample.position.every( Number.isFinite ) && sample.normal.every( Number.isFinite ), 'surface attachments remain finite' );
+	assert.ok( sample.normal[ axis ] * sign > 0.5, 'surface attachment normals point out of the torso' );
+	assert.ok( Math.abs( Math.hypot( ...sample.normal ) - 1 ) < 0.0001, 'surface attachment normals are normalized' );
+
+}
 const { geometry: g, triangles } = shapes.buildBoar();
 const p = g.attributes.position.array, n = g.attributes.normal.array, idx = g.index.array;
 assert.ok( p.length > 0 && p.every( Number.isFinite ), 'all rest positions must be finite' );
 assert.ok( n.length === p.length && n.every( Number.isFinite ), 'every vertex needs a finite normal' );
-assert.ok( triangles > 0 && triangles < 6000, 'a herd must fit a small instanced geometry budget' );
+assert.ok( triangles > 0 && triangles < 24000, 'the detailed anatomy must remain within the instanced herd budget' );
 const lo = [ Infinity, Infinity, Infinity ], hi = [ - Infinity, - Infinity, - Infinity ];
 for ( let i = 0; i < p.length; i += 3 ) {
 

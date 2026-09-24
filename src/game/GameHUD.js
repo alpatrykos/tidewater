@@ -373,6 +373,7 @@ export class GameHUD {
 		if ( this.invOpen ) {
 
 			this.closeStand();
+			this.game.drink.cancel();
 			this.renderInventory();
 			releaseMouse();
 
@@ -390,10 +391,14 @@ export class GameHUD {
 		this.inv.innerHTML = `
 			<h2>${ s.upgrades.hold > 0 ? 'Fish hold' : 'Cooler' }</h2>
 			<p class="gm-sub">${ s.inventory.length } fish · ${ s.holdKg.toFixed( 1 ) } of ${ s.stats.holdKg } kg · worth $${ s.holdValue }</p>
+			<div class="gm-shop-row"><span>Żubr<small>Unlimited cans</small></span><button class="gm-mini" data-can>Drink (B)</button></div>
 			<div class="gm-list">${ rows || '<div class="gm-empty">Nothing yet. Cast from the pier, the beach or the boat.</div>' }</div>
 			${ logged ? `<div class="gm-log"><b>Fish log</b><br>${ logged }</div>` : '' }
 			<div class="gm-foot"><span class="gm-sub">Sell at the fish stand by the pier</span><button class="gm-btn is-ghost" data-close>Close (I)</button></div>`;
 		this.inv.querySelector( '[data-close]' ).onclick = () => this.toggleInventory( false );
+		const can = this.inv.querySelector( '[data-can]' );
+		if ( can ) can.disabled = ! this.game.canFish || !! this.game.fight || !! this.game.landing || ! [ 'idle', 'stowed' ].includes( this.game.rod.state );
+		if ( can ) can.onclick = () => { this.toggleInventory( false ); this.game.startDrink(); };
 		for ( const b of this.inv.querySelectorAll( '[data-release]' ) ) b.onclick = () => s.release( Number( b.dataset.release ) );
 
 	}

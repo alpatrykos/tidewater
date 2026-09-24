@@ -2150,7 +2150,7 @@ export class UI {
 						${ row( k( 'E' ), 'Interact<small>Board, helm, step ashore, trade</small>' ) }
 						${ row( k( 'V' ), 'Boat camera<small>1st / 3rd person</small>' ) }
 						${ row( k( 'R' ), 'Fishing rod<small>Take out / put away</small>' ) }
-						${ row( k( 'B' ), 'Drink Żubr<small>On foot or on deck, between casts</small>' ) }
+						${ row( k( 'B' ), 'Drink a fresh Żubr<small>Open, finish, toss the empty can. Repeat whenever ready</small>' ) }
 						${ row( k( 'LMB' ), 'Cast, strike, reel<small>Hold to wind up / reel</small>' ) }
 						${ row( k( 'RMB' ), 'Reel in an empty line' ) }
 						${ row( k( 'I' ), 'Cooler and fish log' ) }

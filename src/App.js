@@ -322,6 +322,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 			village: this.village, colliders: this.colliders, vegetation: this.vegetation, boat: this.boatCtl, boatModel: this.boat,
 			query: this.query, spray: this.spray, csm: this.csm,
 		} );
+		await this.wildlife.boarBatch.ready;
 		// moving receivers: last frame's depth no longer lines up with them (see installContactShadows)
 		for ( const o of [ this.whale && this.whale.group, this.wildlife.birdBatch.mesh, this.wildlife.critterBatch.mesh, this.wildlife.boarBatch.mesh ] ) if ( o ) ContactShadows.skipRoots.add( o );
 		this.freeCam = qs.has( 'fly' );

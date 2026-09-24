@@ -43,6 +43,17 @@ const rootStart = [ rooter.x, rooter.z, rooter.phase ];
 for ( let i = 0; i < 60; i ++ ) step( rooting, 1 / 60 );
 assert.deepEqual( [ rooter.x, rooter.z ], rootStart.slice( 0, 2 ), 'rooting stays planted' );
 assert.ok( rooter.phase > rootStart[ 2 ] + 0.1, 'stationary rooting keeps its snout animation alive' );
+
+// At a steady 0.52 m/s and size1, the gait cycle travels 0.5554054054 m. Extra
+// time-driven phase or an unrelated smoothed stride makes planted shader feet slide.
+const walking = new Boars( { terrain: flat } );
+const walkerPose = walking.agents[ 0 ];
+walking.agents = [ walkerPose ];
+Object.assign( walkerPose, { x: 0, y: 6, z: 0, size: 1, seed: 0, speed: 0.52, state: 'wander', t: 20, tx: 0, tz: 10, yaw: 0 } );
+const walkPhase = walkerPose.phase;
+step( walking, 1 / 30, null, { position: { x: 0, y: 8, z: 0 } } );
+assert.ok( Math.abs( walkerPose.stride - 0.52 / 3.7 ) < 1e-10, 'gait drive follows actual movement speed' );
+assert.ok( Math.abs( walkerPose.phase - walkPhase - walkerPose.z / 0.5554054054054054 * Math.PI * 2 ) < 1e-8, 'moving phase is synchronized with actual ground travel' );
 for ( const terrain of [ { heightAt: () => - 2 }, { heightAt: ( x ) => 100 + x * 2 }, { heightAt: () => NaN } ] ) {
 
 	assert.equal( new Boars( { terrain } ).agents.length, 0, 'no water, steep, or missing habitat fallback may place unsafe boars' );

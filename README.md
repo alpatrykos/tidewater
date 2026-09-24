@@ -56,7 +56,7 @@ breach. It runs directly on WebGPU and WGSL with its own small rendering engine,
   grass, with impostors and dithered LOD fades.
 - Beach debris.
 - Birds, crabs and marine snow.
-- Wild boars forage near the upper beach and inland vegetation, root in the soil, and trot away when approached.
+- Wild boars forage near the upper beach and inland vegetation, root in the soil, and trot away when approached. Detailed anatomy, groomed bristle coats, articulated steps, and small ear and head movements bring them to life up close.
 - A humpback whale with an escort of fish, blows, fluke dives and breaches.
 
 **Lighting and post**
@@ -84,6 +84,7 @@ breach. It runs directly on WebGPU and WGSL with its own small rendering engine,
 | E | Interact: board the boat, take or leave the helm, step ashore, trade with the fish buyer or the chandlery |
 | V | Boat camera at the helm (1st / 3rd person) |
 | R | Take out / put away the fishing rod |
+| B | Open a fresh Żubr, finish it, then toss the empty can (unlimited supply) |
 | Left mouse | Hold to wind up, release to cast · strike when a fish takes the bait · hold to reel |
 | Right mouse | Reel an empty line in |
 | I or Tab | Cooler / fish hold and the fish log |

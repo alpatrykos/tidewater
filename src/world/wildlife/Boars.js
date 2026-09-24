@@ -1,6 +1,7 @@
 import { WORLD } from '../WorldLayout.js';
 import { mulberry32 } from '../../util/Noise.js';
 import { TAU, clamp, smooth, angleDiff, approach, qGround } from './Kit.js';
+import { boarCycleLength } from './BoarPose.js';
 
 const ACTIVE = 160, DRAW = 150, CELL = 16;
 const MIN_GROUND = 2.25, MAX_SLOPE = 0.52;
@@ -282,10 +283,12 @@ export class Boars {
 			}
 
 		}
-		// The same current/previous phase drives breathing and snout work at rest;
-		// locomotion adds the faster distance-based gait on top of that gentle motion.
-		a.phase += traveled / a.size * TAU + dt * ( a.state === 'root' ? 1.35 : 0.45 );
-		a.stride += ( clamp( a.speed / 2.5, 0, 1 ) - a.stride ) * approach( 10, dt );
+		// The stance trajectory moves backward exactly as far as the body travels forward.
+		// Drive follows actual movement (already acceleration-limited above), and the shader
+		// shares this cycle length. Adding an idle clock during locomotion would cause skating.
+		a.stride = dt > 0 ? clamp( traveled / dt / 3.7, 0, 1 ) : a.stride;
+		if ( traveled > 0 ) a.phase += traveled / ( a.size * Math.max( 0.0001, boarCycleLength( a.stride ) ) ) * TAU;
+		else a.phase += dt * ( a.state === 'root' ? 1.35 : 0.45 );
 		a.root += ( ( a.state === 'root' ? 1 : 0 ) - a.root ) * approach( 4, dt );
 		this.orient( a );
 
@@ -309,7 +312,7 @@ export class Boars {
 			a.scale = a.size * smooth( DRAW, DRAW - 25, distance );
 			if ( fresh ) this.remember( a );
 			if ( a.scale <= 0 ) continue;
-			batch.write( a );
+			batch.write( a, distance );
 			if ( blobs ) blobs.add( a.x, a.y, a.z, a.scale * 0.68, 0.12, 0.55, a.sx, a.sz );
 
 		}

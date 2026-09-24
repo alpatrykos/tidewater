@@ -418,44 +418,111 @@ export class SoundScape {
 
 	}
 
+	canHandle() {
+
+		this._drinkSound( 'handle' );
+
+	}
+
+	canTab() {
+
+		this._drinkSound( 'tab' );
+
+	}
+
+	canThrow() {
+
+		this._drinkSound( 'throw' );
+
+	}
+
+	canImpact( strength = 1 ) {
+
+		this._drinkSound( 'impact', clamp( num( strength, 1 ), 0, 1 ) );
+
+	}
+
 	drinkSip() {
 
 		this._drinkSound( 'sip' );
 
 	}
 
-	// Short, close sounds share the normal volume/mute path; no downloads or looping voices.
-	_drinkSound( kind ) {
+	// Close Foley follows the normal master volume/mute path. Buffers are cached,
+	// voices are finite, and every source disconnects itself when playback ends.
+	_drinkSound( kind, strength = 1 ) {
 
-		if ( ! this.enabled || ! this.near || this._muted || this._volume <= 0 ) return;
+		if ( ! this.enabled || ! this.near || this._muted || this._volume <= 0 || strength <= 0 ) return;
 		const c = this.ctx;
 		const buffers = this._drinkBuffers || ( this._drinkBuffers = {} );
 		let buffer = buffers[ kind ];
 		if ( ! buffer ) {
 
-			const duration = kind === 'open' ? 0.55 : 0.64;
+			const duration = { open: 0.86, sip: 0.74, handle: 0.21, tab: 0.11, throw: 0.28, impact: 0.43 }[ kind ];
 			buffer = c.createBuffer( 1, Math.ceil( duration * c.sampleRate ), c.sampleRate );
 			const data = buffer.getChannelData( 0 );
-			let lowNoise = 0, phase = 0;
+			let lowNoise = 0, liquid = 0, pressure = 0, phase = 0;
 			for ( let i = 0; i < data.length; i ++ ) {
 
 				const t = i / c.sampleRate, noise = Math.random() * 2 - 1;
-				lowNoise += ( noise - lowNoise ) * 0.14;
+				lowNoise += ( noise - lowNoise ) * ( 1 - Math.exp( - 2 * Math.PI * 1800 / c.sampleRate ) );
+				liquid += ( noise - liquid ) * ( 1 - Math.exp( - 2 * Math.PI * 330 / c.sampleRate ) );
+				let sample = 0;
 				if ( kind === 'open' ) {
 
-					const pop = Math.sin( t * 2 * Math.PI * 1450 ) * Math.exp( - t * 95 );
-					const hiss = ( noise - lowNoise ) * Math.min( 1, t / 0.012 ) * Math.exp( - t * 10 );
-					data[ i ] = 0.3 * pop + 0.22 * hiss;
+					// The scored lid breaks, then pressure escapes through a widening
+					// aperture. The hiss darkens as it decays; the tab settles last.
+					const ring = ( Math.sin( t * 2 * Math.PI * 1830 ) + 0.48 * Math.sin( t * 2 * Math.PI * 3270 ) ) * Math.exp( - t * 125 );
+					const snap = ( noise - lowNoise ) * Math.exp( - t * 260 );
+					const pop = Math.sin( t * 2 * Math.PI * 165 ) * Math.exp( - t * 72 );
+					const release = Math.max( 0, t - 0.012 );
+					pressure += ( noise - pressure ) * ( 1 - Math.exp( - 2 * Math.PI * ( 2800 + 5200 * Math.exp( - release * 8 ) ) / c.sampleRate ) );
+					const hiss = ( pressure - liquid ) * smooth( 0, 0.01, release ) * ( 0.68 * Math.exp( - release * 8 ) + 0.1 * Math.exp( - release * 3.8 ) );
+					const settle = Math.max( 0, t - 0.095 );
+					const click = t > 0.095 ? ( noise * 0.6 + Math.sin( settle * 2 * Math.PI * 2470 ) * 0.4 ) * Math.exp( - settle * 170 ) : 0;
+					sample = 0.23 * ring + 0.3 * snap + 0.12 * pop + 0.48 * hiss + 0.12 * click;
+
+				} else if ( kind === 'sip' ) {
+
+					// Small liquid motion followed by two soft, irregular swallows.
+					// Keep the tonal component low: a close sip, never a cartoon gulp.
+					const g = t < 0.36 ? t - 0.07 : t - 0.39;
+					const envelope = g > 0 && g < 0.19 ? Math.sin( Math.PI * g / 0.19 ) ** 2 : 0;
+					phase += 2 * Math.PI * ( 112 + 43 * Math.sin( Math.PI * clamp( g / 0.19, 0, 1 ) ) ) / c.sampleRate;
+					const slosh = liquid * Math.sin( Math.PI * t / duration ) ** 2;
+					sample = envelope * ( Math.sin( phase ) * 0.065 + liquid * 0.2 ) + 0.1 * slosh;
+
+				} else if ( kind === 'tab' ) {
+
+					const contact = ( noise - lowNoise ) * Math.exp( - t * 240 );
+					const flex = ( Math.sin( t * 2 * Math.PI * 2350 ) + 0.35 * Math.sin( t * 2 * Math.PI * 4210 ) ) * Math.exp( - t * 135 );
+					sample = contact * 0.3 + flex * 0.15;
+
+				} else if ( kind === 'throw' ) {
+
+					// Sleeve and air move past the ear as the hand follows through.
+					const air = ( lowNoise - liquid ) * Math.sin( Math.PI * t / duration ) ** 2;
+					const cloth = liquid * smooth( 0, 0.025, t ) * Math.exp( - t * 17 );
+					sample = 0.24 * air + 0.17 * cloth;
+
+				} else if ( kind === 'impact' ) {
+
+					// A hollow aluminium body flexes, with a few irregular tab rattles.
+					const shell = ( Math.sin( t * 2 * Math.PI * 570 ) + 0.48 * Math.sin( t * 2 * Math.PI * 935 ) + 0.22 * Math.sin( t * 2 * Math.PI * 1710 ) ) * Math.exp( - t * 31 );
+					const strike = ( noise - liquid ) * Math.exp( - t * 145 );
+					const g = t < 0.087 ? t - 0.044 : t < 0.151 ? t - 0.087 : t - 0.151;
+					const rattle = g > 0 ? ( noise - lowNoise + 0.28 * Math.sin( g * 2 * Math.PI * 2840 ) ) * Math.exp( - g * 130 ) * Math.exp( - t * 9 ) : 0;
+					sample = 0.17 * shell + 0.24 * strike + 0.14 * rattle;
 
 				} else {
 
-					// Two rounded liquid gulps, with a little breath between them.
-					const g = t < 0.27 ? t : t - 0.29;
-					const envelope = g > 0 && g < 0.24 ? Math.sin( Math.PI * g / 0.24 ) ** 2 : 0;
-					phase += 2 * Math.PI * ( 200 - Math.max( 0, g ) * 430 ) / c.sampleRate;
-					data[ i ] = envelope * ( Math.sin( phase ) * 0.19 + lowNoise * 0.14 );
+					// Fingertips on thin aluminium, plus a quiet cloth brush.
+					const contact = Math.sin( t * 2 * Math.PI * 670 ) * Math.exp( - t * 95 );
+					const brush = ( lowNoise - liquid ) * Math.sin( Math.PI * t / duration ) ** 2 * Math.exp( - t * 9 );
+					sample = contact * 0.12 + brush * 0.13;
 
 				}
+				data[ i ] = sample * smooth( 0, 0.0008, t ) * ( 1 - smooth( duration - 0.035, duration, t ) );
 
 			}
 			buffers[ kind ] = buffer;
@@ -463,9 +530,13 @@ export class SoundScape {
 		}
 		const src = c.createBufferSource(), gain = c.createGain();
 		src.buffer = buffer;
-		gain.gain.value = 0.28;
-		src.connect( gain ).connect( this.near );
-		src.onended = () => { src.disconnect(); gain.disconnect(); };
+		src.playbackRate.value = kind === 'open' ? 1 : 0.975 + Math.random() * 0.05;
+		gain.gain.value = { open: 0.44, sip: 0.28, handle: 0.2, tab: 0.26, throw: 0.28, impact: 0.46 }[ kind ] * strength;
+		const pan = c.createStereoPanner?.();
+		if ( pan ) pan.pan.value = kind === 'sip' ? 0.04 : 0.17;
+		src.connect( gain ).connect( pan || this.near );
+		pan?.connect( this.near );
+		src.onended = () => { src.disconnect(); gain.disconnect(); pan?.disconnect(); };
 		src.start( c.currentTime + 0.005 );
 
 	}

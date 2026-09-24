@@ -14,7 +14,7 @@ export class TouchControls {
 			<div class="touch-actions"><button data-key="KeyE">Interact</button><button data-key="KeyR">Rod</button>
 			<button data-action="primary" class="touch-primary">Cast</button><button data-action="secondary">Retrieve</button>
 			<button data-key="Space">Jump / Up</button><button data-key="KeyC">Dive</button>
-			<button data-key="ShiftLeft">Sprint</button><button data-key="KeyB">Drink</button><button data-key="KeyV">Boat camera</button></div>
+			<button data-key="ShiftLeft">Sprint</button><button data-key="KeyB" aria-label="Open and drink Żubr, then toss the empty can">Drink Żubr</button><button data-key="KeyV">Boat camera</button></div>
 			<div class="touch-tools"><button data-key="KeyI">Cooler</button><button data-key="KeyL">Light</button><button data-action="settings">Settings</button></div>
 			<div class="touch-hint">Left stick to move · drag the scene to look</div>`;
 		document.body.append( this.root );
@@ -31,6 +31,7 @@ export class TouchControls {
 		this.retrieve = this.root.querySelector( '[data-action="secondary"]' );
 		this.boatCamera = this.root.querySelector( '[data-key="KeyV"]' );
 		this.drink = this.root.querySelector( '[data-key="KeyB"]' );
+		this.rod = this.root.querySelector( '[data-key="KeyR"]' );
 		this.bind( this.stick, 'stick' );
 		this.bind( app.engine.domElement, 'look' );
 		for ( const button of this.root.querySelectorAll( 'button' ) ) this.bind( button, 'button' );
@@ -116,13 +117,15 @@ export class TouchControls {
 		this.root.hidden = !! this.blocked;
 		this.photoExit.hidden = ! this.ui.photoMode;
 		if ( this.blocked ) this.cancel();
-		const state = game.rod.state;
+		const state = game.rod.state, can = game.drink;
 		const label = game.fight ? 'Hold to reel' : state === 'floating' ? 'Strike' : state === 'windup' ? 'Release to cast' : 'Hold to cast';
 		if ( this.primary.textContent !== label ) this.primary.textContent = label;
 		this.primary.disabled = ! game.rod.equipped;
+		this.primary.setAttribute( 'aria-label', label );
 		this.retrieve.hidden = ! game.rod.equipped;
+		this.rod.disabled = !! can?.busy;
 		this.boatCamera.hidden = this.app.player.mode !== 'boat';
 		this.drink.hidden = this.app.player.mode === 'boat';
-		this.drink.disabled = ! game.canDrink || !! game.drink?.active;
+		this.drink.disabled = ! can?.available || ! game.canDrink;
 	}
 }

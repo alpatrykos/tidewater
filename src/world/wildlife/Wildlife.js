@@ -68,8 +68,8 @@ class WaterHeights {
 
 // Island wildlife: gulls, terns, pelicans, frigatebirds and sanderlings (one instanced draw, plus
 // the near shadow cascade), ghost crabs, hermit crabs and burrows (one draw), and soft contact
-// shadows under the small ones (one draw in the late pass), and inland boars (one draw). Ground
-// wildlife is simulated near the viewer only; distant animals cost nothing and draw nothing.
+// shadows under the small ones (one draw in the late pass), and inland boars (skin plus a
+// near-camera bristle coat). Ground wildlife is simulated near the viewer only.
 //
 // csm: the SunShadows instance (birds cast into its near cascade only).
 //
