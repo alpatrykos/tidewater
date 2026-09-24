@@ -90,6 +90,7 @@ const CARDS = [
 		body: `<div class="gm-guide-list">
 			${ row( k( 'W', 'A', 'S', 'D' ), 'Move, mouse to look, <kbd>Shift</kbd> to run' ) }
 			${ row( k( 'E' ), 'Board the boat, take the helm, talk to Joe and Marta' ) }
+			${ row( k( 'B' ), 'Take a sip of Żubr on foot or on deck, between casts' ) }
 			${ row( k( 'F1' ), 'All controls, and this guide again' ) }
 		</div>
 		<div class="gm-guide-where">
@@ -236,7 +237,7 @@ export class Guide {
 		const c = CARDS[ i ];
 		this.eyebrow.textContent = c.eyebrow;
 		this.title.textContent = c.title;
-		this.body.innerHTML = c.body;
+		this.body.innerHTML = this.game.app.input.touchMode ? c.body.replace( '<kbd>B</kbd>', '<kbd>Drink</kbd>' ) : c.body;
 		this.dots.forEach( ( d, j ) => d.classList.toggle( 'is-on', j === i ) );
 		this.nextBtn.textContent = i === CARDS.length - 1 ? 'Let\'s fish' : 'Next';
 		if ( this.minimap ) this.minimap.highlight( i === CARDS.length - 1 ? [ 'joe', 'marta' ] : [] );

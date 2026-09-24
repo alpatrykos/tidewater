@@ -268,7 +268,7 @@ export class AppUI {
 		if ( p.prompt ) {
 			let { key, text } = p.prompt;
 			if ( app.input.touchMode ) {
-				key = ( { E: 'Interact', R: 'Rod', LMB: app.game.fight ? 'Reel' : 'Cast', RMB: 'Retrieve', Space: 'Up' } )[ key ] || key;
+				key = ( { E: 'Interact', R: 'Rod', B: 'Drink', LMB: app.game.fight ? 'Reel' : 'Cast', RMB: 'Retrieve', Space: 'Up' } )[ key ] || key;
 				text = text.replace( /right-click/g, 'tap Retrieve' ).replace( /R  put the rod away/g, 'Rod to put away' ).replace( /V  camera/g, 'Boat camera' );
 			}
 			ui.setPrompt( key, text );

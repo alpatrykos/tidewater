@@ -5,7 +5,7 @@
     "dev": "vite --host 127.0.0.1 --port 5189",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node test/quality.mjs && node test/mobile.mjs && node test/game-logic.mjs && node test/engine-smoke.mjs && node test/ocean-resolution.mjs && node test/sky-irradiance.mjs && node test/sky-cloud-shadows.mjs && node test/ocean-spray-culling.mjs && node test/vegetation-deform.mjs && node test/vegetation-geometry-lod.mjs && node test/vegetation-culling.mjs && node test/vegetation-quality.mjs && node test/vegetation-shadows.mjs && node test/terrain-normal-grad.mjs"
+    "test": "node test/quality.mjs && node test/mobile.mjs && node test/game-logic.mjs && node test/boars.mjs && node test/boar-geometry.mjs && node test/drinking.mjs && node test/engine-smoke.mjs && node test/life-boars.mjs && node test/ocean-resolution.mjs && node test/sky-irradiance.mjs && node test/sky-cloud-shadows.mjs && node test/ocean-spray-culling.mjs && node test/vegetation-deform.mjs && node test/vegetation-geometry-lod.mjs && node test/vegetation-culling.mjs && node test/vegetation-quality.mjs && node test/vegetation-shadows.mjs && node test/terrain-normal-grad.mjs"
   },
   "devDependencies": {
     "vite": "^8.3.0",

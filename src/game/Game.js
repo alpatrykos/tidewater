@@ -12,6 +12,7 @@ import { UPGRADES, fuelBurn } from './Gear.js';
 import { GameHUD } from './GameHUD.js';
 import { Minimap } from './Minimap.js';
 import { Guide } from './Guide.js';
+import { ZubrCan } from './ZubrCan.js';
 
 // how long the catch card stays up unless dismissed (ms)
 const CATCH_CARD_MS = 9000;
@@ -23,6 +24,7 @@ const CATCH_CARD_MS = 9000;
 //   RMB        reel an empty line back in
 //   I / Tab    cooler / hold contents and the fish log
 //   E          at the fish stand: sell your catch
+//   B          take a sip of Żubr (on foot or on deck, with the line in)
 export class Game {
 
 	constructor( app ) {
@@ -32,6 +34,7 @@ export class Game {
 		this.state.load();
 		this.rod = new FishingRod( { scene: app.scene, camera: app.camera, query: app.query, terrain: app.terrainData, audio: app.audio } );
 		this.rod.onLand = ( where ) => this.onBobberLanded( where );
+		this.drink = new ZubrCan( { scene: app.scene, camera: app.camera, audio: app.audio } );
 		this.stand = new FishStand( { scene: app.scene, terrain: app.terrainData, colliders: app.colliders } );
 		this.display = new CatchDisplay( { scene: app.scene, stall: this.stand.iceFish() } );
 		this.landing = null; // { species, kg } while the caught fish swings in view
@@ -138,6 +141,32 @@ export class Game {
 
 	}
 
+	get canDrink() {
+
+		const ui = this.app.ui?.ui, hud = this.hud;
+		return this.canFish && this.app.input.enabled &&
+			! ( typeof document !== 'undefined' && document.hidden ) &&
+			! ( ui?.panelOpen || ui?.helpOpen || ui?._start || this.guide?.open ) &&
+			! ( hud?.invOpen || hud?.standOpen || hud?.catchOpen ) &&
+			! this.fight && ! this.landing && [ 'idle', 'stowed' ].includes( this.rod.state );
+
+	}
+
+	updateDrink( dt ) {
+
+		const allowed = this.canDrink;
+		if ( allowed && this.app.input.hit( 'KeyB' ) && ! this.drink.active ) {
+
+			if ( this.rod.equipped ) this.rod.equip( false );
+			this.drink.start();
+			this.toast( 'Żubr · Na zdrowie!', 2200 );
+
+		}
+		if ( this.app.input.hit( 'Escape' ) ) this.drink.cancel();
+		this.drink.update( dt, allowed );
+
+	}
+
 	// ---- per frame (after the player / camera update)
 	update( dt ) {
 
@@ -155,14 +184,6 @@ export class Game {
 		}
 
 		const can = this.canFish;
-		if ( inp.hit( 'KeyR' ) && can && ! this.fight ) {
-
-			rod.equip( ! rod.equipped );
-			if ( ! rod.equipped ) this.cancelLine();
-			this.toast( rod.equipped ? ( inp.touchMode ? 'Rod out · hold Cast, then release' : 'Rod out · hold left mouse to cast' ) : 'Rod away', 1600 );
-
-		}
-
 		if ( ! can && rod.equipped ) {
 
 			// swimming, driving, free camera: the line comes in and the rod goes away
@@ -176,6 +197,15 @@ export class Game {
 
 			this.hud.toggleInventory( false );
 			this.hud.closeStand();
+
+		}
+
+		this.updateDrink( dt );
+		if ( inp.hit( 'KeyR' ) && can && ! this.fight && ! this.drink.active ) {
+
+			rod.equip( ! rod.equipped );
+			if ( ! rod.equipped ) this.cancelLine();
+			this.toast( rod.equipped ? ( inp.touchMode ? 'Rod out · hold Cast, then release' : 'Rod out · hold left mouse to cast' ) : 'Rod away', 1600 );
 
 		}
 
@@ -255,7 +285,7 @@ export class Game {
 
 		} else if ( this.landing || this.display.shown ) this.endLanding();
 
-		p.busy = rod.lineInWater || rod.state === 'windup';
+		p.busy = rod.lineInWater || rod.state === 'windup' || this.drink.active;
 
 		this.updateBoat( dt );
 
@@ -264,7 +294,8 @@ export class Game {
 		this.updateVendors( inp, p );
 
 		// prompts when the player has nothing to say
-		if ( ! p.prompt && can ) p.prompt = this.prompt();
+		if ( this.drink.active ) p.prompt = { key: '…', text: 'Taking a sip of Żubr' };
+		else if ( ! p.prompt && can ) p.prompt = this.prompt();
 
 		const aboard = p.mode === 'boat' || p.mode === 'deck';
 		// the catch card's live fish portrait (or one queued thumbnail)
@@ -290,7 +321,8 @@ export class Game {
 
 			// by the water (boat deck, pier, the wet beach, wading): suggest the rod
 			const byWater = p.mode === 'deck' || ( p.mode === 'walk' && [ 'wood', 'wetsand', 'water' ].includes( p.surface ) );
-			return byWater ? { key: 'R', text: 'Take out the rod' } : null;
+			const drinkHint = this.app.input.touchMode ? 'Drink for a sip of Żubr' : 'B  drink Żubr';
+			return byWater ? { key: 'R', text: `Take out the rod   ·   ${ drinkHint }` } : { key: 'B', text: 'Drink Żubr' };
 
 		}
 
@@ -359,7 +391,7 @@ export class Game {
 		if ( p.mode === 'walk' ) for ( const v of this.vendors ) if ( v.inRange( p.position ) ) near = v;
 		for ( const v of this.vendors ) v.talking = !! ( hud && hud.standOpen && hud.vendor === v );
 		if ( hud && hud.standOpen && ( ! near || near !== hud.vendor ) ) hud.closeStand();
-		if ( ! near || this.fight || this._cardDismissed || ( hud && hud.catchOpen ) ) return;
+		if ( ! near || this.fight || this.drink.active || this._cardDismissed || ( hud && hud.catchOpen ) ) return;
 		if ( ! p.prompt ) p.prompt = { key: 'E', text: hud && hud.standOpen ? 'Leave' : `Talk to ${ near.name.split( ' ·' )[ 0 ] }` };
 		if ( inp.hit( 'KeyE' ) ) {
 

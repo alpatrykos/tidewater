@@ -1,5 +1,6 @@
 // Wildlife (birds, sanderlings, crabs, contact shadows) and gulls, headless at 2560x1267.
 //   node test/life-wildlife.mjs [outDir]
+import assert from 'node:assert/strict';
 import { setupLife } from './life-harness.mjs';
 import * as E from '../src/engine/index.js';
 
@@ -7,6 +8,8 @@ const OUT = process.argv[ 2 ] || '/tmp';
 const W = + ( process.env.W || 2560 ), H = + ( process.env.H || 1267 );
 const T0 = performance.now();
 const L = await setupLife( { W, H, ground: { center: [ 20, 0 ], size: 500 }, water: true } );
+const gpuErrors = [];
+L.GPU.device.addEventListener( 'uncapturederror', ( event ) => gpuErrors.push( event.error.message ) );
 const { Wildlife } = await import( '../src/world/wildlife/Wildlife.js' );
 const { Gulls } = await import( '../src/world/Gulls.js' );
 const T = L.terrain;
@@ -21,6 +24,8 @@ fn shoreEvaluateNoNormal( xz: vec2f, depth: f32, groundH: f32 ) -> ShoreSample {
 	var s: ShoreSample; s.runup = 1.5 + sin( frame.time ); s.inland = - depth / 0.066; s.dRdt = cos( frame.time ); s.tau = fract( frame.time / 9.0 ); return s; }` } ),
 };
 const wl = new Wildlife( { scene: L.scene, terrain: T, csm: L.shadows, spray, shore, terrainGPU } );
+assert.ok( wl.boars?.agents.length > 0, 'Island wildlife includes boars on valid inland habitat' );
+assert.ok( L.scene.children.includes( wl.boarBatch.mesh ), 'Boars are attached to the scene' );
 wl.blobs.mesh.userData.late = true;
 const gulls = new Gulls( { scene: L.scene } );
 console.log( 'constructed in', ( performance.now() - T0 ).toFixed( 0 ), 'ms; birds', wl.birds.agents.length );
@@ -53,6 +58,7 @@ const upd = ( dt ) => wl.update( dt, cam, null );
 
 // swash probe round trip (stub shore): a few rendered frames so the readback lands
 await L.run( 12, ( dt ) => wl.update( dt, cam, null ) );
+assert.deepEqual( gpuErrors, [], 'Wildlife shaders compile and render without GPU errors' );
 const pr = wl.shorebirds.probe;
 console.log( 'swash probe', pr ? { valid: pr.valid, sample: Array.from( pr.cpu.slice( 0, 4 ) ).map( ( x ) => + x.toFixed( 3 ) ) } : 'none' );
 
@@ -147,11 +153,25 @@ cam.lookAt( 20, 8, - 40 );
 await L.run( 3, upd );
 await L.save( OUT + '/wildlife-bay.png' );
 
+// 5. inland boars on the actual terrain, through the shared wildlife update/render loop.
+const boar = wl.boars.agents[ 0 ];
+cam.fov = 40;
+cam.position.set( boar.x - 4, boar.y + 5, boar.z + 5 );
+cam.lookAt( boar.x, boar.y + 0.5, boar.z );
+await L.run( 4, upd );
+assert.ok( wl.boarBatch.count > 0, 'Nearby boars reach the renderer' );
+await L.save( OUT + '/wildlife-boars.png' );
+wl.test = () => {};
+wl.update( 1 / 60, cam );
+assert.equal( wl.boarBatch.count, 0, 'Wildlife showcases suppress the ambient boars' );
+wl.test = null;
+
 // cost: frames with and without the wildlife meshes
 cam.position.set( bx - 2.5, T.heightAt( bx - 2.5, bz - 5 ) + 1.2, bz - 5 );
 cam.lookAt( bx, T.heightAt( bx, bz ) + 0.1, bz );
 const withMs = await L.gpuTime( 30, upd );
-for ( const m of [ wl.birdBatch.mesh, wl.critterBatch.mesh, wl.blobs.mesh, gulls.mesh ] ) m.visible = false;
+for ( const m of [ wl.birdBatch.mesh, wl.critterBatch.mesh, wl.boarBatch.mesh, wl.blobs.mesh, gulls.mesh ] ) m.visible = false;
 const without = await L.gpuTime( 30, upd );
+assert.deepEqual( gpuErrors, [], 'All wildlife views render without GPU errors' );
 console.log( `frame ms: with wildlife ${ withMs.toFixed( 2 ) }, without ${ without.toFixed( 2 ) }, cpu update ${ wl.cpuMs.toFixed( 3 ) } ms` );
 await L.exit();

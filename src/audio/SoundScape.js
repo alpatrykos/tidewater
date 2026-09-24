@@ -1,5 +1,5 @@
-// Sample-based sound for the island: real field recordings only (public/audio, sources and licences in
-// public/audio/CREDITS.md). Nothing is synthesised. Files are fetched and decoded after the first user
+// Sample-based island ambience (public/audio, sources and licences in public/audio/CREDITS.md), with
+// small procedural can-opening and drinking accents. Files are fetched and decoded after the first user
 // gesture (resume()); boat, underwater, pier and night sounds load the first time they become audible.
 //
 // Surf is wave by wave, driven by the game's own shore waves (ShoreWaves): a CPU mirror of their phase
@@ -409,6 +409,64 @@ export class SoundScape {
 	coin() {
 
 		this._shot( 'coins', 'coin', this.near, MIX.coins, 0.97 + Math.random() * 0.06 );
+
+	}
+
+	canOpen() {
+
+		this._drinkSound( 'open' );
+
+	}
+
+	drinkSip() {
+
+		this._drinkSound( 'sip' );
+
+	}
+
+	// Short, close sounds share the normal volume/mute path; no downloads or looping voices.
+	_drinkSound( kind ) {
+
+		if ( ! this.enabled || ! this.near || this._muted || this._volume <= 0 ) return;
+		const c = this.ctx;
+		const buffers = this._drinkBuffers || ( this._drinkBuffers = {} );
+		let buffer = buffers[ kind ];
+		if ( ! buffer ) {
+
+			const duration = kind === 'open' ? 0.55 : 0.64;
+			buffer = c.createBuffer( 1, Math.ceil( duration * c.sampleRate ), c.sampleRate );
+			const data = buffer.getChannelData( 0 );
+			let lowNoise = 0, phase = 0;
+			for ( let i = 0; i < data.length; i ++ ) {
+
+				const t = i / c.sampleRate, noise = Math.random() * 2 - 1;
+				lowNoise += ( noise - lowNoise ) * 0.14;
+				if ( kind === 'open' ) {
+
+					const pop = Math.sin( t * 2 * Math.PI * 1450 ) * Math.exp( - t * 95 );
+					const hiss = ( noise - lowNoise ) * Math.min( 1, t / 0.012 ) * Math.exp( - t * 10 );
+					data[ i ] = 0.3 * pop + 0.22 * hiss;
+
+				} else {
+
+					// Two rounded liquid gulps, with a little breath between them.
+					const g = t < 0.27 ? t : t - 0.29;
+					const envelope = g > 0 && g < 0.24 ? Math.sin( Math.PI * g / 0.24 ) ** 2 : 0;
+					phase += 2 * Math.PI * ( 200 - Math.max( 0, g ) * 430 ) / c.sampleRate;
+					data[ i ] = envelope * ( Math.sin( phase ) * 0.19 + lowNoise * 0.14 );
+
+				}
+
+			}
+			buffers[ kind ] = buffer;
+
+		}
+		const src = c.createBufferSource(), gain = c.createGain();
+		src.buffer = buffer;
+		gain.gain.value = 0.28;
+		src.connect( gain ).connect( this.near );
+		src.onended = () => { src.disconnect(); gain.disconnect(); };
+		src.start( c.currentTime + 0.005 );
 
 	}
 

@@ -316,14 +316,14 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		this.wake = new WakeSim( renderer, { terrainGPU: this.terrainGPU, boat: this.boatCtl, colliders: this.colliders } );
 		this.surface.wake = this.wake;
 		this.player = new Player( { camera, input: this.input, terrain: this.terrainData, colliders: this.colliders, query: this.query, boat: this.boatCtl, reef: this.reef } );
-		// birds, beach crabs, sanderlings (after spray / query / boat, which they use)
+		// birds, beach crabs, sanderlings and inland boars (after spray / query / boat, which they use)
 		this.wildlife = new Wildlife( {
 			scene, renderer, terrain: this.terrainData, terrainGPU: this.terrainGPU, shore: this.shore,
 			village: this.village, colliders: this.colliders, vegetation: this.vegetation, boat: this.boatCtl, boatModel: this.boat,
 			query: this.query, spray: this.spray, csm: this.csm,
 		} );
 		// moving receivers: last frame's depth no longer lines up with them (see installContactShadows)
-		for ( const o of [ this.whale && this.whale.group, this.wildlife.birdBatch && this.wildlife.birdBatch.mesh, this.wildlife.critterBatch && this.wildlife.critterBatch.mesh ] ) if ( o ) ContactShadows.skipRoots.add( o );
+		for ( const o of [ this.whale && this.whale.group, this.wildlife.birdBatch.mesh, this.wildlife.critterBatch.mesh, this.wildlife.boarBatch.mesh ] ) if ( o ) ContactShadows.skipRoots.add( o );
 		this.freeCam = qs.has( 'fly' );
 
 		// ---------------------------------------------------------------- post
@@ -354,6 +354,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		this.player.audio = this.audio;
 		// the fishing game (rod, bites, catch, cooler, fish stand)
 		this.game = new Game( this );
+		await this.game.drink.ready;
 		// the lanterns at Joe's fish stand and Marta's chandlery (lit from dusk like the village lamps);
 		// positions are in each stall's frame (x right, z toward the customer), turned by its yaw
 		for ( const [ s, lx, ly, lz ] of [ [ STAND, - 0.9, 1.85, 0.1 ], [ CHANDLERY, - 0.75, 1.58, - 1.45 ] ] ) {
