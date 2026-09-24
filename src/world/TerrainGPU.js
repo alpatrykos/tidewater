@@ -28,6 +28,7 @@ import { detailBinding } from './terrain/TerrainShading.js';
 //   terrainHeightAt( xz: vec2f ) -> f32                 exact bilinear height (-90 outside the domain)
 //   terrainNormalRock( xz: vec2f ) -> vec4f             macro normal xz (-1..1), rock mask, AO — fragment only
 //                                                       (implicit derivatives); terrainNormalRockLevel( xz, level )
+//   terrainNormalRockGrad( xz, dx, dy ) -> vec4f        same filtering with terrain-UV gradients captured before branching
 //   terrainNormalAt( xz: vec2f ) -> vec3f               unit macro normal (mip 0, any stage)
 //   terrainSplat( xz: vec2f ) -> vec4f                  sand, paths, gullies / seagrass, rubble — fragment only;
 //                                                       terrainSplatLevel( xz, level )
@@ -243,6 +244,11 @@ fn terrainHeightAt( xz: vec2f ) -> f32 {
 // filtered normal (xz components), rock mask, ambient occlusion
 fn terrainNormalRock( xz: vec2f ) -> vec4f {
 	let s = textureSample( terrainNormalTex, smpLinearClamp, terrainUvOf( xz ) );
+	return vec4f( s.xy * 2.0 - 1.0, s.z, s.w );
+}
+// Explicit screen gradients keep filtering valid when only some fragments need the normal.
+fn terrainNormalRockGrad( xz: vec2f, dx: vec2f, dy: vec2f ) -> vec4f {
+	let s = textureSampleGrad( terrainNormalTex, smpLinearClamp, terrainUvOf( xz ), dx, dy );
 	return vec4f( s.xy * 2.0 - 1.0, s.z, s.w );
 }
 // explicit mip (e.g. in the vertex stage)

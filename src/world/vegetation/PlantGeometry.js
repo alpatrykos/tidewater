@@ -159,11 +159,13 @@ function addFrond( b, o ) {
 
 		}
 
-		for ( let k = 0; k < segs; k ++ ) {
+		const rowStep = b.lowDetail ? 2 : 1;
+		for ( let k = 0; k < segs; k += rowStep ) {
 
 			for ( let j = 0; j < cross; j ++ ) {
 
-				const a = idx[ k ][ j ], bb = idx[ k + 1 ][ j ], c = idx[ k + 1 ][ j + 1 ], d = idx[ k ][ j + 1 ];
+				const next = Math.min( k + rowStep, segs );
+				const a = idx[ k ][ j ], bb = idx[ next ][ j ], c = idx[ next ][ j + 1 ], d = idx[ k ][ j + 1 ];
 				if ( sigma > 0 ) b.quad( a, d, c, bb );
 				else b.quad( a, bb, c, d );
 
@@ -884,9 +886,10 @@ export function buildUnderstory() {
 }
 
 // Banana clumps: two variants (kinds 2 and 4) in one mesh
-export function buildBananas() {
+export function buildBananas( { lowDetail = false } = {} ) {
 
 	const b = new GeoBuilder();
+	b.lowDetail = lowDetail;
 	const tris = {};
 	let t0 = 0;
 	b.kind = UNDERSTORY.BANANA; buildBanana( 9, b ); tris.banana = b.triangles - t0; t0 = b.triangles;
@@ -931,11 +934,12 @@ function addTube( b, pts, { radius, radial = 4, part, age = 0, seed = 0, phase =
 
 	}
 
-	for ( let i = 0; i < n - 1; i ++ ) {
+	const rowStep = b.lowDetail ? 2 : 1;
+	for ( let i = 0; i < n - 1; i += rowStep ) {
 
 		for ( let j = 0; j < radial; j ++ ) {
 
-			const a = start + i * ( radial + 1 ) + j, c = a + radial + 1;
+			const a = start + i * ( radial + 1 ) + j, c = start + Math.min( i + rowStep, n - 1 ) * ( radial + 1 ) + j;
 			b.quad( a, a + 1, c + 1, c );
 
 		}
@@ -1041,9 +1045,13 @@ function addBlade( b, o ) {
 
 	}
 
-	for ( let k = 0; k < segsY; k ++ ) {
+	// Distant blades reuse the exact generated vertices and leaf attributes. Only the
+	// grid indices change, keeping leaf placement, random seeds, tips and midribs stable.
+	const yStep = b.lowDetail ? 2 : 1, xStep = b.lowDetail ? segsX : 1;
+	for ( let k = 0; k < segsY; k += yStep ) {
 
-		for ( let j = 0; j < nx; j ++ ) b.quad( idx[ k ][ j ], idx[ k ][ j + 1 ], idx[ k + 1 ][ j + 1 ], idx[ k + 1 ][ j ] );
+		const next = Math.min( k + yStep, segsY );
+		for ( let j = 0; j < nx; j += xStep ) b.quad( idx[ k ][ j ], idx[ k ][ j + xStep ], idx[ next ][ j + xStep ], idx[ next ][ j ] );
 
 	}
 
@@ -1261,17 +1269,19 @@ export function buildStrelitzia( seed = 53, b = new GeoBuilder() ) {
 // rules (fern fade) never match. Monstera (by far the most numerous) has a mesh of its own; elephant
 // ears and heliconias share one (one draw call each).
 export const BROADLEAF = { MONSTERA: 11, ELEPHANT: 12, HELICONIA: 13, STRELITZIA: 14 };
-export function buildMonsteraMesh() {
+export function buildMonsteraMesh( { lowDetail = false } = {} ) {
 
 	const b = new GeoBuilder();
+	b.lowDetail = lowDetail;
 	b.kind = BROADLEAF.MONSTERA; buildMonstera( 41, b );
 	return { geometry: b.build( 2.2, new THREE.Vector3( 0, 0.6, 0 ) ), triangles: b.triangles };
 
 }
 
-export function buildBroadleaf() {
+export function buildBroadleaf( { lowDetail = false } = {} ) {
 
 	const b = new GeoBuilder();
+	b.lowDetail = lowDetail;
 	const tris = {};
 	let t0 = 0;
 	b.kind = BROADLEAF.ELEPHANT; buildElephantEar( 43, b ); tris.elephant = b.triangles - t0; t0 = b.triangles;

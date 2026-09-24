@@ -147,7 +147,9 @@ export class App {
 		if ( ! qs.has( 'noVeg' ) ) {
 
 			await progress( 0.14, 'Planting the island…' );
-			this.vegetation = new Vegetation( { scene, terrain: this.terrainData, village: this.village } );
+			// Isolate vegetation LOD from render resolution and FFT size in device comparisons.
+			const vegetationQuality = [ 'mobile', 'desktop' ].includes( qs.get( 'vegetation' ) ) ? qs.get( 'vegetation' ) : this.quality.name;
+			this.vegetation = new Vegetation( { scene, terrain: this.terrainData, village: this.village, quality: vegetationQuality } );
 			useStaticVelocity( this.vegetation.group );
 
 		}

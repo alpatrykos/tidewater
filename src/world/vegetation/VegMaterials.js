@@ -422,7 +422,7 @@ fn vegPlantAlbedo( in: FragInput ) -> vec3f {
 
 const PLANT_ATTRIBUTES = { iPos: 'vec4f', iDat: 'vec4f', aVeg: 'vec4f', aMat: 'vec4f', aLobe: 'vec4f' };
 
-export function createPlantLeafMaterial() {
+export function createPlantLeafMaterial( { shadowEnd = null } = {} ) {
 
 	const mat = new Material( {
 		name: 'veg-plant-leaf',
@@ -430,7 +430,14 @@ export function createPlantLeafMaterial() {
 		modules: [ vegModule, plantModule ],
 		attributes: PLANT_ATTRIBUTES,
 		varyings: { vTrunkY: 'f32', vTrunkT: 'vec3f', vMat: 'vec4f', vIDat: 'vec4f', vIPos: 'vec3f' },
-		vertex: /* wgsl */`
+		vertex: ( shadowEnd === null ? '' : /* wgsl */`
+#if PASS_DEPTH
+	// The mobile far palm only replaces shadows inside the previous detailed-palm range.
+	if ( length( vegParams.camPos - v.iPos.xyz ) >= ${ f( shadowEnd ) } * ( 1.0 + VEG_LOD_BAND / 2.0 ) ) {
+		v.useWorld = true; v.worldPos = v.iPos.xyz; v.worldNormal = VEG_UP; return;
+	}
+#endif
+` ) + /* wgsl */`
 	let pl = vegPlantDeform( ( v.model * vec4f( v.position, 1.0 ) ).xyz, vegInstanceNormal( v.model, v.normal ), v.iPos, v.iDat, v.aVeg, v.aMat, v.aLobe, draw.params.yzw );
 	v.useWorld = true;
 	v.worldPos = pl.pos;
@@ -485,7 +492,8 @@ export function createPlantLeafMaterial() {
 	s.metalness = 0.0;
 	s.specularIntensity = select( select( 0.4, 0.3, isStem ), 0.42, isBroad );
 	s.translucency = select( vec3f( 0.0 ), vegTranslucency( albedo, in.N, select( 0.3, 0.2, isBroad ), in.P ), isLeaf );`,
-		shadow: 'return vegPlantMask( in );',
+		shadow: shadowEnd === null ? 'return vegPlantMask( in );' : /* wgsl */`
+	return vegPlantMask( in ) && vegLodDither( in.vs.vIPos, vec3f( 0.0, ${ f( shadowEnd ) }, ${ f( shadowEnd + 0.01 ) } ), in.pixel );`,
 	} );
 	return mat;
 

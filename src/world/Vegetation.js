@@ -3,7 +3,7 @@ import { G } from '../core/Globals.js';
 import { VegSite, scatterVegetation, buildGrassMask, RULES } from './vegetation/Scatter.js';
 import { VegType, LodLevel } from './vegetation/InstanceLOD.js';
 import { GrassField } from './vegetation/GrassField.js';
-import { uCamPos, uGustOffset, UNDER_FERN_FADE } from './vegetation/VegNodes.js';
+import { uCamPos, uGustOffset, UNDER_FERN_FADE, LOD_BAND } from './vegetation/VegNodes.js';
 
 // WGSL variant index of an instance (VegNodes.vegVariantOf)
 const variantOf = ( seed, isShrub ) => `vegVariantOf( ${ seed }, ${ isShrub } )`;
@@ -28,7 +28,7 @@ import { LeafAtlas } from './vegetation/LeafTextures.js';
 // trees + shrubs), grass near / mid / far = 11 (fewer when a level is empty). Shadow casters: palm
 // near, bananas, monstera, broadleaf, canopy near.
 //
-// Options: { scene, terrain, village? } - with a village (Village.js) its building footprints
+// Options: { scene, terrain, village?, quality?: 'desktop' | 'mobile' } - with a village (Village.js) its building footprints
 // and boardwalks are kept clear; otherwise a default boardwalk polyline is used.
 // The impostor atlases are baked on the first update() (recorded into the frame encoder; three.js
 // picked up from the meshes' onBeforeRender); until then far trees are not drawn.
@@ -90,13 +90,21 @@ const UNDER_FADE = [ 120, 140 ]; // young palms / bananas
 const BROAD_FADE = [ 85, 105 ]; // monstera / elephant ear / heliconia
 const BANANA_FADE = [ 100, 120 ];
 const CANOPY_FAR = [ 2600, 2800 ];
+const transitionEnd = ( distance ) => distance * ( 1 + LOD_BAND / 2 );
+const VEGETATION_QUALITY = {
+	desktop: { name: 'desktop', palmNear: PALM_NEAR, treeNear: TREE_NEAR, shrubNear: SHRUB_NEAR, palmMargin: 10 },
+	mobile: { name: 'mobile', palmNear: 70, treeNear: 40, shrubNear: 28, palmMargin: 12 },
+};
 
 export class Vegetation {
 
-	constructor( { scene, terrain, village = null } ) {
+	constructor( { scene, terrain, village = null, quality = 'desktop' } ) {
 
 		this.scene = scene;
 		this.terrain = terrain;
+		this.quality = VEGETATION_QUALITY[ quality ] || VEGETATION_QUALITY.desktop;
+		const { palmNear: palmDistance, treeNear: treeDistance, shrubNear: shrubDistance, palmMargin } = this.quality;
+		const mobile = this.quality.name === 'mobile';
 		this.group = new THREE.Group();
 		this.group.name = 'Vegetation';
 		this.group.matrixAutoUpdate = false;
@@ -112,9 +120,10 @@ export class Vegetation {
 
 		// materials (shared across meshes)
 		const leafMat = createPlantLeafMaterial();
+		const palmFarMat = mobile ? createPlantLeafMaterial( { shadowEnd: PALM_NEAR } ) : leafMat;
 		this.leafAtlas = new LeafAtlas();
 		const canopyMat = createCanopyMaterial( this.leafAtlas );
-		uCanopyNear.value.set( TREE_NEAR, SHRUB_NEAR );
+		uCanopyNear.value.set( treeDistance, shrubDistance );
 
 		// geometry
 		const palmNear = buildPalmNear();
@@ -123,6 +132,9 @@ export class Vegetation {
 		const broad = buildBroadleaf();
 		const monsteraMesh = buildMonsteraMesh();
 		const bananaMesh = buildBananas();
+		const broadMid = mobile ? buildBroadleaf( { lowDetail: true } ) : null;
+		const monsteraMid = mobile ? buildMonsteraMesh( { lowDetail: true } ) : null;
+		const bananaMid = mobile ? buildBananas( { lowDetail: true } ) : null;
 		const canopy = buildCanopyNear();
 
 		// impostor atlas of the tree and shrub crown variants (same lobe tables as the near mesh)
@@ -140,8 +152,10 @@ export class Vegetation {
 			variantOf: ( seed, isShrub ) => variantOf( seed, isShrub ),
 			colorOf: ( { seed, cr, leaf, bright, isGroup1 } ) => `${ impostorColor }( ${ seed }, ${ cr }, ${ leaf }, ${ bright }, ${ isGroup1 } )`,
 			nearDist: ( isShrub ) => `select( vegParams.canopyNear.x, vegParams.canopyNear.y, ${ isShrub } )`,
+			shadowFar: mobile ? [ TREE_NEAR, SHRUB_NEAR ] : null,
 		} );
 		this.materials = [ leafMat, canopyMat, impostorMat ];
+		if ( mobile ) this.materials.push( palmFarMat );
 
 		this.types = [];
 		const add = ( t ) => {
@@ -153,9 +167,9 @@ export class Vegetation {
 		};
 
 		this.palms = add( new VegType( 'palms', recs.palms, {
-			nearRange: PALM_NEAR, margin: 10, refreshDistance: 6, farExcludeNear: true, sortNear: true,
+			nearRange: palmDistance, margin: palmMargin, refreshDistance: 6, farExcludeNear: true, sortNear: true, cull: mobile,
 			near: [ { geometry: palmNear.geometry, material: leafMat, castShadow: true, name: 'veg-palm' } ],
-			far: { parts: [ { geometry: palmFar.geometry, material: leafMat, name: 'veg-palm-far' } ], fade: CANOPY_FAR },
+			far: { parts: [ { geometry: palmFar.geometry, material: palmFarMat, castShadow: mobile, name: 'veg-palm-far' } ], fade: CANOPY_FAR },
 		} ) );
 
 		// understory: young palms and ferns in one mesh; the plant kind rides on the seed
@@ -164,42 +178,48 @@ export class Vegetation {
 			...recs.ferns.map( ( r ) => ( { ...r, seed: UNDERSTORY.FERN + r.seed * 0.999, qr: UNDER_FERN_FADE[ 1 ] + 8 } ) ),
 		];
 		// banana clumps (two variants; their heights are in the mesh: H ~ 0)
-		const bananaRecs = recs.bananas.map( ( r ) => ( { ...r, H: 0.02, seed: ( r.seed < 0.5 ? UNDERSTORY.BANANA : UNDERSTORY.BANANA_B ) + r.seed * 0.999, qr: BANANA_FADE[ 1 ] + 10 } ) );
+		const bananaRecs = recs.bananas.map( ( r ) => ( { ...r, H: 0.02, seed: ( r.seed < 0.5 ? UNDERSTORY.BANANA : UNDERSTORY.BANANA_B ) + r.seed * 0.999, qr: ( mobile ? transitionEnd( 40 ) : BANANA_FADE[ 1 ] ) + 10 } ) );
 		this.bananas = add( new VegType( 'bananas', bananaRecs, {
-			fade: BANANA_FADE, margin: 10, sortNear: true,
+			fade: BANANA_FADE, margin: 10, sortNear: true, cull: mobile,
+			nearRange: 40, farExcludeNear: mobile, farDistanceLimit: BANANA_FADE[ 1 ],
 			near: [ { geometry: bananaMesh.geometry, material: leafMat, castShadow: true, name: 'veg-banana' } ],
+			far: mobile ? { parts: [ { geometry: bananaMid.geometry, material: leafMat, castShadow: true, name: 'veg-banana-mid' } ], fade: BANANA_FADE } : null,
 		} ) );
 		this.understory = add( new VegType( 'understory', underRecs, {
-			fade: UNDER_FADE, margin: 10, sortNear: true,
+			fade: UNDER_FADE, margin: 10, sortNear: true, cull: mobile,
 			near: [ { geometry: under.geometry, material: leafMat, castShadow: false, name: 'veg-understory' } ],
 		} ) );
 
 		// broadleaf understory: monstera (own mesh), elephant ear + heliconia (one mesh, kind on the seed)
-		const monsteraRecs = recs.monsteras.map( ( r ) => ( { ...r, seed: BROADLEAF.MONSTERA + r.seed * 0.999, qr: BROAD_FADE[ 1 ] + 10 } ) );
+		const monsteraRecs = recs.monsteras.map( ( r ) => ( { ...r, seed: BROADLEAF.MONSTERA + r.seed * 0.999, qr: ( mobile ? transitionEnd( 30 ) : BROAD_FADE[ 1 ] ) + 10 } ) );
 		this.monsteras = add( new VegType( 'monsteras', monsteraRecs, {
-			fade: BROAD_FADE, margin: 10, sortNear: true,
+			fade: BROAD_FADE, margin: 10, sortNear: true, cull: mobile,
+			nearRange: 30, farExcludeNear: mobile, farDistanceLimit: BROAD_FADE[ 1 ],
 			near: [ { geometry: monsteraMesh.geometry, material: leafMat, castShadow: true, name: 'veg-monstera' } ],
+			far: mobile ? { parts: [ { geometry: monsteraMid.geometry, material: leafMat, castShadow: true, name: 'veg-monstera-mid' } ], fade: BROAD_FADE } : null,
 		} ) );
 		const broadRecs = [
-			...recs.elephantEars.map( ( r ) => ( { ...r, seed: BROADLEAF.ELEPHANT + r.seed * 0.999, qr: BROAD_FADE[ 1 ] + 10 } ) ),
-			...recs.heliconias.map( ( r ) => ( { ...r, seed: BROADLEAF.HELICONIA + r.seed * 0.999, qr: BROAD_FADE[ 1 ] + 10 } ) ),
-			...recs.strelitzias.map( ( r ) => ( { ...r, seed: BROADLEAF.STRELITZIA + r.seed * 0.999, qr: BROAD_FADE[ 1 ] + 10 } ) ),
+			...recs.elephantEars.map( ( r ) => ( { ...r, seed: BROADLEAF.ELEPHANT + r.seed * 0.999, qr: ( mobile ? transitionEnd( 30 ) : BROAD_FADE[ 1 ] ) + 10 } ) ),
+			...recs.heliconias.map( ( r ) => ( { ...r, seed: BROADLEAF.HELICONIA + r.seed * 0.999, qr: ( mobile ? transitionEnd( 30 ) : BROAD_FADE[ 1 ] ) + 10 } ) ),
+			...recs.strelitzias.map( ( r ) => ( { ...r, seed: BROADLEAF.STRELITZIA + r.seed * 0.999, qr: ( mobile ? transitionEnd( 30 ) : BROAD_FADE[ 1 ] ) + 10 } ) ),
 		];
 		this.broadleaf = add( new VegType( 'broadleaf', broadRecs, {
-			fade: BROAD_FADE, margin: 10, sortNear: true,
+			fade: BROAD_FADE, margin: 10, sortNear: true, cull: mobile,
+			nearRange: 30, farExcludeNear: mobile, farDistanceLimit: BROAD_FADE[ 1 ],
 			near: [ { geometry: broad.geometry, material: leafMat, castShadow: true, name: 'veg-broadleaf' } ],
+			far: mobile ? { parts: [ { geometry: broadMid.geometry, material: leafMat, castShadow: true, name: 'veg-broadleaf-mid' } ], fade: BROAD_FADE } : null,
 		} ) );
 
 		// canopy: trees + shrubs (shrubs flagged by a negative vertical scale in iDat.y); near
-		// geometry within TREE_NEAR / SHRUB_NEAR, octahedral impostors beyond
+		// geometry within the profile's near distances, octahedral impostors beyond
 		const canopyRecs = [
-			...recs.trees.map( ( r ) => ( { ...r, qr: TREE_NEAR + 10 } ) ),
-			...recs.shrubs.map( ( r ) => ( { ...r, qr: SHRUB_NEAR + 10 } ) ),
+			...recs.trees.map( ( r ) => ( { ...r, qr: transitionEnd( treeDistance ) + 10 } ) ),
+			...recs.shrubs.map( ( r ) => ( { ...r, qr: transitionEnd( shrubDistance ) + 10 } ) ),
 		];
 		this.canopy = add( new VegType( 'canopy', canopyRecs, {
-			nearRange: TREE_NEAR, margin: 10, sortNear: true, sortFar: true, farRefresh: 16,
+			nearRange: treeDistance, margin: 10, sortNear: true, sortFar: true, farRefresh: 16, cull: mobile,
 			near: [ { geometry: canopy.geometry, material: canopyMat, castShadow: true, name: 'veg-canopy' } ],
-			far: { parts: [ { geometry: buildImpostorQuad(), material: impostorMat, name: 'veg-canopy-far' } ], fade: CANOPY_FAR },
+			far: { parts: [ { geometry: buildImpostorQuad(), material: impostorMat, castShadow: mobile, name: 'veg-canopy-far' } ], fade: CANOPY_FAR },
 		} ) );
 
 		// alpha-tested foliage after the opaque ground (terrain, rocks, buildings) and the far crowns
@@ -272,6 +292,7 @@ export class Vegetation {
 
 		if ( a ) a.update( p, true );
 		if ( b ) b.update( p, true );
+		for ( const t of this.types ) t.cull( camera, G.windSpeed.value );
 
 		this.grass.update( camera );
 

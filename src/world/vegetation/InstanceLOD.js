@@ -1,4 +1,5 @@
 import * as THREE from '../../engine/index.js';
+import { LOD_BAND } from './VegNodes.js';
 
 // Instance storage + distance LOD for one vegetation type.
 //
@@ -20,6 +21,8 @@ const _q = new THREE.Quaternion();
 const _p = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _yAxis = new THREE.Vector3( 0, 1, 0 );
+const _viewProjection = new THREE.Matrix4();
+const _frustum = new THREE.Frustum();
 
 export class VegInstances {
 
@@ -161,6 +164,16 @@ export class LodLevel {
 	// instance matrices (materials that place the instance from iPos / iDat alone)
 	fill( inst, list = null, n = inst.count, matrices = true ) {
 
+		// Keep the distance-query candidates separate from the visible compacted list. A camera
+		// turn can reveal a plant without moving far enough to repeat the distance query.
+		this.source = { inst, list, n, matrices };
+		this.cullDirty = true;
+		this._upload( inst, list, n, matrices );
+
+	}
+
+	_upload( inst, list, n, matrices ) {
+
 		n = Math.min( n, this.capacity );
 		const M = this.instanceMatrix.array, B = this.iBuffer.array;
 		const im = inst.matrices, ip = inst.iPos, id = inst.iDat;
@@ -197,6 +210,50 @@ export class LodLevel {
 
 	}
 
+	// One immutable selection for all passes in this frame. Never compact a shadow-casting
+	// level against the main camera: a tree outside the picture may still shade visible ground.
+	cull( frustum, radius, windRadius ) {
+
+		if ( ! this.source || this.meshes.some( ( m ) => m.castShadow ) ) {
+
+			this.cullDirty = false;
+			return;
+
+		}
+		const { inst, list, n, matrices } = this.source;
+		const ids = this.visibleIds || ( this.visibleIds = new Int32Array( inst.count ) );
+		const { px, py, pz } = inst;
+		let count = 0, changed = this.cullDirty;
+		for ( let k = 0; k < n; k ++ ) {
+
+			const i = list === null ? k : list[ k ];
+			const r = radius[ i ] + windRadius * Math.abs( inst.iDat[ i * 4 + 2 ] );
+			let visible = true;
+			for ( const p of frustum.planes ) {
+
+				if ( p.normal.x * px[ i ] + p.normal.y * py[ i ] + p.normal.z * pz[ i ] + p.constant < - r ) {
+
+					visible = false;
+					break;
+
+				}
+
+			}
+
+			if ( visible ) {
+
+				if ( ids[ count ] !== i ) changed = true;
+				ids[ count ++ ] = i;
+
+			}
+
+		}
+
+		if ( changed || this.count !== Math.min( count, this.capacity ) ) this._upload( inst, ids, count, matrices );
+		this.cullDirty = false;
+
+	}
+
 	get triangles() {
 
 		return this.count * this.trianglesPerInstance;
@@ -211,11 +268,12 @@ export class VegType {
 	// sortFar: keep the far level roughly front to back (distance buckets, re-sorted after the
 	// camera moved farRefresh metres; alpha-tested impostors then get rejected by the early depth
 	// test behind nearer ones). Implies a far material that ignores the instance matrices.
-	constructor( name, records, { near = null, far = null, nearRange = 100, fade = null, margin = 14, refreshDistance = 6, farExcludeNear = false, sortNear = false, sortFar = false, farRefresh = 16 } = {} ) {
+	constructor( name, records, { near = null, far = null, nearRange = 100, fade = null, margin = 14, refreshDistance = 6, farExcludeNear = false, farDistanceLimit = Infinity, sortNear = false, sortFar = false, farRefresh = 16, cull = false } = {} ) {
 
 		this.name = name;
 		this.sortNear = sortNear;
-		this.sortFar = sortFar && !! far && ! farExcludeNear;
+		this.sortFar = sortFar && !! far && ! farExcludeNear && ! Number.isFinite( farDistanceLimit );
+		this.farDistanceLimit = farDistanceLimit;
 		this.farRefresh = farRefresh;
 		this.farX = Infinity;
 		this.farZ = Infinity;
@@ -227,10 +285,37 @@ export class VegType {
 		this.lastY = Infinity;
 		this.lastZ = Infinity;
 		this.levels = [];
+		this.cullEnabled = cull && [ near, far?.parts ].some( ( parts ) => parts?.length && parts.every( ( p ) => ! p.castShadow ) );
+		if ( this.cullEnabled ) {
+
+			// A base-centred sphere, deliberately wider than the undeformed plant. Plant crowns
+			// rotate without changing length; palms additionally translate by their height and
+			// lean. Three source radii cover canopy lobe variation and the enlarged, camera-facing
+			// far crowns (up to sqrt(2) scale). The 2m guard also covers view jitter and leaf edges.
+			let extent = 0;
+			for ( const part of [ ...( near || [] ), ...( far?.parts || [] ) ] ) {
+
+				const p = part.geometry.attributes.position;
+				for ( let i = 0; i < p.count; i ++ ) extent = Math.max( extent, Math.hypot( p.getX( i ), p.getY( i ), p.getZ( i ) ) );
+
+			}
+
+			this.cullRadius = Float32Array.from( records, ( r ) => {
+
+				const scale = r.msx !== undefined ? Math.max( Math.abs( r.msx ), Math.abs( r.msy ), Math.abs( r.msz ) ) : Math.abs( r.s ) * Math.max( 1, Math.abs( r.sy || 1 ) );
+				return 3 * extent * scale + Math.abs( r.H || 1 ) * ( 1 + Math.abs( r.l || 0 ) ) + 2;
+
+			} );
+			this._cullView = new THREE.Matrix4();
+			this._cullViewValid = false;
+
+		}
 
 		// fade = [start, end] for types without a far level (shrink out)
 		const nearWindow = far ? new THREE.Vector3( 0, nearRange, nearRange + 0.01 ) : new THREE.Vector3( 0, fade[ 0 ], fade[ 1 ] );
-		this.queryRadius = ( far ? nearRange : fade[ 1 ] ) + margin;
+		// Hard handovers retain near geometry through the outer half of the dither band.
+		// Include that band plus all movement allowed by the deferred-refill scheduler.
+		this.queryRadius = ( far ? nearRange * ( 1 + LOD_BAND / 2 ) : fade[ 1 ] ) + margin;
 
 		if ( near ) {
 
@@ -258,7 +343,7 @@ export class VegType {
 			// (saves their collapsed triangles); must include anything that can cross
 			// nearRange before the next refresh
 			this.farExcludeNear = farExcludeNear;
-			if ( farExcludeNear ) {
+			if ( farExcludeNear || Number.isFinite( farDistanceLimit ) ) {
 
 				this.far.setDynamic();
 				this.farIds = new Int32Array( Math.max( 1, this.inst.count ) );
@@ -272,6 +357,28 @@ export class VegType {
 	get meshes() {
 
 		return this.levels.flatMap( ( l ) => l.meshes );
+
+	}
+
+	// Mobile opt-in: call after distance refills, once per frame before any render passes.
+	// The shared buffer stays unchanged throughout the frame, including refraction. Desktop
+	// reflections retain the original uncropped lists by leaving cull disabled.
+	cull( camera, windSpeed = 25 ) {
+
+		if ( ! this.cullEnabled ) return;
+		camera.updateMatrixWorld();
+		_viewProjection.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse );
+		const wind = Math.max( Math.abs( windSpeed ) * 0.1, 0.03 );
+		const windRadius = 0.04 * wind * wind + 0.04 * wind;
+		const view = this._cullView.elements, next = _viewProjection.elements;
+		let changed = ! this._cullViewValid || windRadius !== this._cullWind;
+		for ( let i = 0; i < 16; i ++ ) if ( next[ i ] !== view[ i ] ) changed = true;
+		if ( ! changed && ! this.levels.some( ( level ) => level.cullDirty ) ) return;
+		this._cullView.copy( _viewProjection );
+		this._cullViewValid = true;
+		this._cullWind = windRadius;
+		_frustum.setFromProjectionMatrix( _viewProjection, camera.coordinateSystem, camera.reversedDepth !== false );
+		for ( const level of this.levels ) level.cull( _frustum, this.cullRadius, windRadius );
 
 	}
 
@@ -342,18 +449,24 @@ export class VegType {
 
 		this.near.fill( this.inst, this.nearIds, n );
 
-		if ( this.farExcludeNear ) {
+		if ( this.far && ( this.farExcludeNear || Number.isFinite( this.farDistanceLimit ) ) ) {
 
 			// drop only instances that stay inside the near range (3D, like the shader test)
-			// until the camera has moved refreshDistance and triggered the next refill
-			const rMin = Math.max( 0, this.nearRange - this.refreshDistance - 2 );
+			// until the next refill. The scheduler can defer a type beyond refreshDistance,
+			// up to its movement margin, so both LODs must cover that entire allowance.
+			const movement = Math.max( this.refreshDistance, this.margin );
+			const rMin = this.farExcludeNear ? Math.max( 0, this.nearRange * ( 1 - LOD_BAND / 2 ) - movement - 2 ) : 0;
 			const r2 = rMin * rMin;
+			// Medium geometry also stops after its final fade. Use its own radius, rather than
+			// queryNear's per-record radius which may only cover the detailed near mesh.
+			const rMax2 = ( this.farDistanceLimit + this.margin ) ** 2;
 			const { px, py, pz } = this.inst;
 			let c = 0;
 			for ( let i = 0; i < this.inst.count; i ++ ) {
 
 				const dx = px[ i ] - camPos.x, dy = py[ i ] - camPos.y, dz = pz[ i ] - camPos.z;
-				if ( dx * dx + dy * dy + dz * dz >= r2 ) this.farIds[ c ++ ] = i;
+				const d2 = dx * dx + dy * dy + dz * dz;
+				if ( d2 >= r2 && d2 <= rMax2 ) this.farIds[ c ++ ] = i;
 
 			}
 

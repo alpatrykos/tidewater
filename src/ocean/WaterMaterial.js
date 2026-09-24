@@ -214,6 +214,7 @@ export class WaterMaterial extends Material {
 	let vHeight = in.vs.vWaveH;
 	// footprint of this pixel on the surface (m) — for filtering / roughness (uniform control flow)
 	let footprint = max( length( fwidth( lagXZ ) ), 1e-4 );
+${ T ? '\tlet terrainUV = terrainUvOf( pos.xz );\n\tlet terrainDx = dpdx( terrainUV );\n\tlet terrainDy = dpdy( terrainUV );' : '' }
 	let sceneDepthC = _waterSceneDepthAt( screenUV );
 
 #if WATER_HULL
@@ -309,9 +310,15 @@ ${ SH ? '	let folded = surf.jacobian < 0.1 || normalize( in.vs.vShoreN ).y < 0.3
 		// near the leading edge the surface bends down to meet the sand like a rounded bead
 		// (meniscus), tilting the normal toward dry land
 		let edgeW = max( 1.0 - smoothstep( 0.0, 0.006, thickness ), lipW );
-		let nr = ${ T ? 'terrainNormalRock( pos.xz )' : 'vec4f( 0.0 )' };
-		let uphill = normalize( - vec2f( nr.x, nr.y ) + vec2f( 1e-5, 0.0 ) );
-		let N = normalize( Nview + vec3f( uphill.x, 0.0, uphill.y ) * ( edgeW * edgeW * 0.7 ) );
+		var meniscus = vec3f( 0.0 );
+		if ( edgeW > 0.0 ) {
+			// The terrain normal cannot affect open water. Preserve its mip filtering with
+			// gradients captured before this branch, including across the waterline.
+			let nr = ${ T ? 'terrainNormalRockGrad( pos.xz, terrainDx, terrainDy )' : 'vec4f( 0.0 )' };
+			let uphill = normalize( - vec2f( nr.x, nr.y ) + vec2f( 1e-5, 0.0 ) );
+			meniscus = vec3f( uphill.x, 0.0, uphill.y ) * ( edgeW * edgeW * 0.7 );
+		}
+		let N = normalize( Nview + meniscus );
 		let NdV = max( dot( N, V ), 1e-4 );
 		let F = fresnelDielectric( NdV, ${ IOR } );
 

@@ -8,7 +8,7 @@ const out = process.argv[ 2 ] || '.';
 const W = +( process.env.W || 2560 ), H = +( process.env.H || 1267 );
 const L = await setupLife( { W, H, ground: { center: [ 20, - 160 ], size: 900, res: 1 }, water: true, shadowSplits: [ 15, 80, 500 ] } );
 const t0 = performance.now();
-const veg = new Vegetation( { scene: L.scene, terrain: L.terrain } );
+const veg = new Vegetation( { scene: L.scene, terrain: L.terrain, quality: process.env.VEG_QUALITY || 'desktop' } );
 console.log( 'veg build ms', ( performance.now() - t0 ).toFixed( 0 ), JSON.stringify( veg.timings ) );
 const upd = ( dt ) => veg.update( dt, L.camera );
 const gy = ( x, z, dy ) => L.terrain.heightAt( x, z ) + dy;

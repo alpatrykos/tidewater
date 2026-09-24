@@ -171,10 +171,11 @@ export class ImpostorAtlas {
 	// variantOf( seed, isGroup1 ): variant index within the group;
 	// colorOf( { seed, cr, leaf, bright, isGroup1 } ): linear albedo;
 	// nearDist( isGroup1 ): the near plants' hand-over distance.
-	createMaterial( { isGroup1, variantOf, colorOf, nearDist } ) {
+	createMaterial( { isGroup1, variantOf, colorOf, nearDist, shadowFar = null } ) {
 
 		const [ g0, g1 ] = this.groups;
 		const cells = this.variantCount * OCT_N;
+		const shadowEnd = shadowFar ? `select( ${ f( shadowFar[ 0 ] ) }, ${ f( shadowFar[ 1 ] ) }, g1Flag )` : null;
 		const sel = ( a, b ) => `select( ${ f( a ) }, ${ f( b ) }, g1Flag )`;
 		const common = /* wgsl */`
 	let g1Flag = ${ isGroup1( 'iDat' ) };
@@ -184,57 +185,8 @@ export class ImpostorAtlas {
 	let Cy = ${ sel( g0.center.y, g1.center.y ) };
 	let vBase = ${ sel( g0.variantBase, g1.variantBase ) };`;
 
-		const mat = new Material( {
-			name: 'veg-impostor',
-			side: 'double',
-			modules: [ vegModule, canopyModule ],
-			textures: { vegImpA: this.rtA.texture, vegImpB: this.rtB.texture },
-			attributes: { iPos: 'vec4f', iDat: 'vec4f' },
-			// crown sway offset (xyz) and the effective scale (w) for the fragment stage
-			varyings: { vImp: 'vec4f', vIPos4: 'vec4f', vIDat: 'vec4f' },
-			// ---- vertex: camera-facing quad around the plant centre, swaying with the wind
-			vertex: /* wgsl */`
-	let iPos = v.iPos;
-	let iDat = v.iDat;
-${ common }
-	let base = iPos.xyz;
-	let sy = abs( iDat.y );
-	// LOD window: from the near plant's hand-over distance to the fade-out, else collapsed
-	let d = length( vegParams.camPos - base );
-	let vis = select( 0.0, 1.0, d >= ( ${ nearDist( 'g1Flag' ) } ) * ( 1.0 - VEG_LOD_BAND / 2.0 ) && d < select( draw.params.w, ${ f( SHRUB_MAX ) }, g1Flag ) );
-	// far away the forest is thinned out: fewer, proportionally larger crowns (grown about
-	// the base) keep the canopy closed
-	let thin = smoothstep( ${ f( THIN[ 0 ] ) }, ${ f( THIN[ 1 ] ) }, d );
-	let keep = select( 1.0, 0.0, fract( iDat.w * 91.7 ) < thin * ${ f( THIN_FRACTION ) } );
-	let grow = thin * ${ f( 1 / Math.sqrt( 1 - THIN_FRACTION ) - 1 ) } + 1.0;
-	let s = iPos.w * grow;
-	let C = base + vec3f( 0.0, Cy * s * sy, 0.0 );
-	// sway of the whole crown (matches the near plants' trunk sway amplitude)
-	let w = vegWindStrength();
-	let g = vegGustAt( base.xz );
-	let ph0 = iDat.w * 6.2832;
-	let sway = ( w * w * 0.009 * ( g * 0.8 + 0.3 ) + sin( frame.time * 0.9 + ph0 ) * w * 0.0045 * ( g + 0.4 ) ) * iDat.z * 0.45;
-	let swayV = vegWindDir3() * sway;
-	let Cs = C + swayV;
-	o.vImp = vec4f( swayV, s );
-	o.vIPos4 = iPos;
-	o.vIDat = iDat;
-	let toCam = normalize( frame.cameraPos - Cs );
-	let right = normalize( cross( VEG_UP, toCam ) + vec3f( 1e-4, 0.0, 0.0 ) );
-	let up = cross( toCam, right );
-	// quad fitted to the plant's projected extent: its horizontal radius across, from above
-	// the crown disc, from the side the (stretched) height
-	let k = s * vis * keep;
-	let ty = abs( toCam.y );
-	let halfW = Rh * k;
-	let halfH = ( Hv * sy * sqrt( max( 1.0 - ty * ty, 0.0 ) ) + Rh * ty ) * k;
-	let p = v.position;
-	v.useWorld = true;
-	v.worldPos = Cs + right * ( p.x * halfW ) + up * ( p.y * halfH );
-	// (three: the geometry normal is left as is, +Z of the quad)
-	v.worldNormal = v.normal;`,
-			// ---- fragment: frame selection + re-projection
-			surface: /* wgsl */`
+		// Coverage and frame reprojection are shared by colour and bounded alpha shadows.
+		const sampleImpostor = /* wgsl */`
 	let iPos = in.vs.vIPos4;
 	let iDat = in.vs.vIDat;
 ${ common }
@@ -245,12 +197,23 @@ ${ common }
 	let cyw = cos( yaw ); let syw = sin( yaw );
 	let C = base + vec3f( 0.0, Cy * si * sy, 0.0 ) + in.vs.vImp.xyz;
 	// world -> plant-local (unstretched, centred): rotate by -yaw, divide by the scale
+#if PASS_DEPTH
+	// Orthographic sun rays: sample the atlas from the light direction, independent of
+	// cascade camera placement. The ray origin lies on this fragment's light ray.
+	let Ow = in.P - C + frame.sunDir * ( R * si * max( sy, 1.0 ) * 4.0 );
+	let Dw = -frame.sunDir;
+#else
 	let Ow = frame.cameraPos - C;
 	let Dw = in.P - frame.cameraPos;
+#endif
 	let scl = vec3f( si, si * sy, si );
 	let O = vec3f( Ow.x * cyw - Ow.z * syw, Ow.y, Ow.x * syw + Ow.z * cyw ) / scl;
 	let D = vec3f( Dw.x * cyw - Dw.z * syw, Dw.y, Dw.x * syw + Dw.z * cyw ) / scl;
+#if PASS_DEPTH
+	let vdir = normalize( -D );
+#else
 	let vdir = normalize( O );
+#endif
 	let vd = normalize( vec3f( vdir.x, max( vdir.y, 0.02 ), vdir.z ) );
 	let gg = ( vegOctEncode( vd ) * 0.5 + 0.5 ) * ${ f( OCT_N - 1 ) };
 	let gi = floor( clamp( gg, vec2f( 0.0 ), vec2f( ${ f( OCT_N - 1.001 ) } ) ) );
@@ -282,6 +245,71 @@ ${ common }
 	// cross-fade from the near geometry (incoming level of the band around nearDist)
 	let nd = ${ nearDist( 'g1Flag' ) };
 	let fade = smoothstep( nd * ( 1.0 - VEG_LOD_BAND / 2.0 ), nd * ( 1.0 + VEG_LOD_BAND / 2.0 ), length( vegParams.camPos - base ) );
+`;
+
+		const mat = new Material( {
+			name: 'veg-impostor',
+			side: 'double',
+			modules: [ vegModule, canopyModule ],
+			textures: { vegImpA: this.rtA.texture, vegImpB: this.rtB.texture },
+			attributes: { iPos: 'vec4f', iDat: 'vec4f' },
+			// crown sway offset (xyz) and the effective scale (w) for the fragment stage
+			varyings: { vImp: 'vec4f', vIPos4: 'vec4f', vIDat: 'vec4f' },
+			// ---- vertex: camera-facing quad around the plant centre, swaying with the wind
+			vertex: /* wgsl */`
+	let iPos = v.iPos;
+	let iDat = v.iDat;
+${ common }
+	let base = iPos.xyz;
+	let sy = abs( iDat.y );
+	// LOD window: from the near plant's hand-over distance to the fade-out, else collapsed
+	let d = length( vegParams.camPos - base );
+${ shadowFar ? /* wgsl */`
+#if PASS_DEPTH
+	let vis = select( 0.0, 1.0, d >= ( ${ nearDist( 'g1Flag' ) } ) * ( 1.0 - VEG_LOD_BAND / 2.0 ) && d < ${ shadowEnd } * ( 1.0 + VEG_LOD_BAND / 2.0 ) );
+	if ( vis == 0.0 ) { v.useWorld = true; v.worldPos = base; v.worldNormal = VEG_UP; return; }
+#else
+` : '' }
+	let vis = select( 0.0, 1.0, d >= ( ${ nearDist( 'g1Flag' ) } ) * ( 1.0 - VEG_LOD_BAND / 2.0 ) && d < select( draw.params.w, ${ f( SHRUB_MAX ) }, g1Flag ) );
+${ shadowFar ? '#endif' : '' }
+	// far away the forest is thinned out: fewer, proportionally larger crowns (grown about
+	// the base) keep the canopy closed
+	let thin = smoothstep( ${ f( THIN[ 0 ] ) }, ${ f( THIN[ 1 ] ) }, d );
+	let keep = select( 1.0, 0.0, fract( iDat.w * 91.7 ) < thin * ${ f( THIN_FRACTION ) } );
+	let grow = thin * ${ f( 1 / Math.sqrt( 1 - THIN_FRACTION ) - 1 ) } + 1.0;
+	let s = iPos.w * grow;
+	let C = base + vec3f( 0.0, Cy * s * sy, 0.0 );
+	// sway of the whole crown (matches the near plants' trunk sway amplitude)
+	let w = vegWindStrength();
+	let g = vegGustAt( base.xz );
+	let ph0 = iDat.w * 6.2832;
+	let sway = ( w * w * 0.009 * ( g * 0.8 + 0.3 ) + sin( frame.time * 0.9 + ph0 ) * w * 0.0045 * ( g + 0.4 ) ) * iDat.z * 0.45;
+	let swayV = vegWindDir3() * sway;
+	let Cs = C + swayV;
+	o.vImp = vec4f( swayV, s );
+	o.vIPos4 = iPos;
+	o.vIDat = iDat;
+#if PASS_DEPTH
+	let toCam = normalize( frame.sunDir );
+#else
+	let toCam = normalize( frame.cameraPos - Cs );
+#endif
+	let right = normalize( cross( VEG_UP, toCam ) + vec3f( 1e-4, 0.0, 0.0 ) );
+	let up = cross( toCam, right );
+	// quad fitted to the plant's projected extent: its horizontal radius across, from above
+	// the crown disc, from the side the (stretched) height
+	let k = s * vis * keep;
+	let ty = abs( toCam.y );
+	let halfW = Rh * k;
+	let halfH = ( Hv * sy * sqrt( max( 1.0 - ty * ty, 0.0 ) ) + Rh * ty ) * k;
+	let p = v.position;
+	v.useWorld = true;
+	v.worldPos = Cs + right * ( p.x * halfW ) + up * ( p.y * halfH );
+	// (three: the geometry normal is left as is, +Z of the quad)
+	v.worldNormal = v.normal;`,
+			// ---- fragment: frame selection + re-projection
+			surface: /* wgsl */`
+${ sampleImpostor }
 	if ( ! ( vA.w > 0.42 && bayer4( in.pixel ) < fade ) ) { discard; }
 
 	let cov = max( vA.w, 1e-3 );
@@ -301,6 +329,11 @@ ${ common }
 	s.specularIntensity = 0.12;
 	// backlit crowns glow at the edges (light through the leaves), like the near canopy
 	s.translucency = vegTranslucency( albedo, in.N, 0.35, in.P );`,
+			shadow: shadowFar ? sampleImpostor + /* wgsl */`
+	let farD = ${ shadowEnd };
+	let farFade = smoothstep( farD * ( 1.0 - VEG_LOD_BAND / 2.0 ), farD * ( 1.0 + VEG_LOD_BAND / 2.0 ), length( vegParams.camPos - base ) );
+	let threshold = bayer4( in.pixel );
+	return vA.w > 0.42 && threshold < fade && threshold >= farFade;` : '',
 		} );
 
 		// frame sampler: the frame's direction, the view ray re-projected on its plane
