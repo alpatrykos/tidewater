@@ -187,7 +187,6 @@ fn vegPlantDeform( P: vec3f, N0: vec3f, iPos: vec4f, iDat: vec4f, veg: vec4f, aM
 	let part = aMat.x;
 	let base = iPos.xyz;
 	let sc = iPos.w;
-	let leanDir = vec3f( cos( iDat.x ), 0.0, sin( iDat.x ) );
 	let lean = iDat.y;
 	let H = iDat.z;
 	// merged geometries (understory): the instance's plant kind is the integer part of the seed;
@@ -196,7 +195,14 @@ fn vegPlantDeform( P: vec3f, N0: vec3f, iPos: vec4f, iDat: vec4f, veg: vec4f, aM
 	let kindI = floor( iDat.w );
 	let kindV = -aLobe.w - 1.0;
 	let keepKind = kindV < 0.5 || abs( kindV - kindI ) < 0.5;
+	// The same zero scale previously applied after deformation: skip texture/trigonometric
+	// wind work for an already collapsed plant. Main-camera LOD also governs shadow passes.
+	let dCam = length( vegParams.camPos - base );
+	let fernFade = select( 1.0, 1.0 - smoothstep( ${ f( UNDER_FERN_FADE[ 0 ] ) }, ${ f( UNDER_FERN_FADE[ 1 ] ) }, dCam ), kindI > 2.5 && kindI < 3.5 );
+	let k = vegLodScale( base, lodRange ) * fernFade * select( 0.0, 1.0, keepKind );
+	if ( k <= 0.0 ) { return VegPlant( base, N0, veg.x * H, VEG_UP ); }
 
+	let leanDir = vec3f( cos( iDat.x ), 0.0, sin( iDat.x ) );
 	let u = veg.x;
 	let s = veg.y;
 	let flut = veg.z;
@@ -259,9 +265,6 @@ fn vegPlantDeform( P: vec3f, N0: vec3f, iPos: vec4f, iDat: vec4f, veg: vec4f, aM
 	out.trunkT = T;
 
 	// LOD window / distance fade: shrink around the base (ferns fade out earlier)
-	let dCam = length( vegParams.camPos - base );
-	let fernFade = select( 1.0, 1.0 - smoothstep( ${ f( UNDER_FERN_FADE[ 0 ] ) }, ${ f( UNDER_FERN_FADE[ 1 ] ) }, dCam ), kindI > 2.5 && kindI < 3.5 );
-	let k = vegLodScale( base, lodRange ) * fernFade * select( 0.0, 1.0, keepKind );
 	out.pos = base + ( pos - base ) * k;
 	return out;
 }

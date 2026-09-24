@@ -536,22 +536,35 @@ ${ deposit ? /* wgsl */`				// fell into the water (not onto the sand): its bubb
 			},
 			vertex: /* wgsl */`
 	let posA = sprayPosR[ v.instance ];
-	let velA = sprayVelR[ v.instance ];
 	let info = sprayInfoR[ v.instance ];
 	let p = posA.xyz;
 	let age = posA.w;
+	let life = info.y;
+	let alive = life > 0.0 && age < life;
+
+	// Most ring slots are empty or expired. Leave a finite, degenerate quad before reading
+	// velocity or evaluating the billboard, trigonometry and cloud / wave lighting.
+	v.useWorld = true;
+	v.worldPos = vec3f( 0.0, -1e5, 0.0 );
+	v.worldNormal = vec3f( 0.0, 1.0, 0.0 );
+	o.vUV = vec2f( 0.0 );
+	o.vCol = vec4f( 0.0 );
+	o.vMisc = vec4f( 0.0 );
+	o.vFwd = vec4f( 0.0 );
+	if ( ! alive || mat.intensity <= 0.0 ) { return; }
+
+	let toCam = frame.cameraPos - p;
+	let dist = max( length( toCam ), 0.05 );
+	// This is the exact zero of distFade below, independent of the billboard's size.
+	if ( mat.maxDistance > 0.0 && dist >= mat.maxDistance ) { return; }
+	let Vd = toCam / dist;
+	let velA = sprayVelR[ v.instance ];
 	let vel = velA.xyz;
 	let kind = info.x;
-	let life = info.y;
 	let isDrop = kind < 0.5;
 	let isLig = kind > 1.5 && kind < 2.5;
 	let isMist = kind > 0.5 && kind < 1.5;
 	let water = isDrop || isLig; // clear water: drops and ligaments
-	let alive = life > 0.0 && age < life;
-
-	let toCam = frame.cameraPos - p;
-	let dist = max( length( toCam ), 0.05 );
-	let Vd = toCam / dist;
 
 	// pixel footprint at this distance: drops are drawn at least ~1.3 px wide
 	let p11 = frame.proj[ 1 ][ 1 ];

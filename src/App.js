@@ -121,7 +121,7 @@ export class App {
 		if ( ! qs.has( 'noClouds' ) ) {
 
 			// sky-pro-webgpu's clouds ("Partly cloudy"); ?oldClouds: the previous ones
-			this.clouds = qs.has( 'oldClouds' ) ? new Clouds( renderer, this.atmosphere ) : new SkyProClouds( renderer, this.atmosphere );
+			this.clouds = qs.has( 'oldClouds' ) ? new Clouds( renderer, this.atmosphere ) : new SkyProClouds( renderer, this.atmosphere, { shadowResolution: this.quality.cloudShadowResolution, shadowUpdateHz: this.quality.cloudShadowUpdateHz } );
 			if ( this.clouds.ready ) await this.clouds.ready;
 			this.sky.clouds = this.clouds;
 
@@ -156,7 +156,7 @@ export class App {
 		this.shoreField = computeShoreField( this.terrainData, { res: 512, swellDir: [ WORLD.swellDir.x, WORLD.swellDir.y ] } );
 		this.terrainGPU = new TerrainGPU( this.terrainData, this.shoreField );
 		// terrain and rocks apply the heightfield sun shadow (long hill shadows) in their own lighting
-		this.terrain = new Terrain( { scene, terrainData: this.terrainData, terrainGPU: this.terrainGPU, renderer } );
+		this.terrain = new Terrain( { scene, terrainData: this.terrainData, terrainGPU: this.terrainGPU, renderer, gridSize: this.quality.terrainGridSize } );
 		this.rocks = new Rocks( { scene, terrain: this.terrain, village: this.village, colliders: this.colliders } );
 		// driftwood (CC0 photoscans), wrack, pebbles and village clutter
 		this.debris = new Debris( { scene, terrain: this.terrain, village: this.village, vegetation: this.vegetation, rocks: this.rocks, colliders: this.colliders } );
@@ -177,7 +177,7 @@ export class App {
 		this.fft = new OceanFFT( renderer, { size: this.quality.fftSize } );
 		if ( this.reef.setOcean ) this.reef.setOcean( this.fft ); // coral / sea fan sway follows the simulated swell
 		this.foamTexture = createFoamTexture( renderer );
-		this.oceanLOD = new CDLOD( { gridSize: Number( qs.get( 'G' ) || 32 ), leafSize: 8, levels: 12, minY: - 25, maxY: 25 } );
+		this.oceanLOD = new CDLOD( { gridSize: Number( qs.get( 'G' ) || this.quality.oceanGridSize ), leafSize: 8, levels: 12, minY: - 25, maxY: 25 } );
 		this.surface = new WaterSurface( { fft: this.fft, cdlod: this.oceanLOD, foamTexture: this.foamTexture } );
 		this.surface.terrain = this.terrainGPU;
 		this.seaDetail = new SeaDetail();
@@ -344,7 +344,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		this.setRenderScale( this.settings.renderScale );
 		this.post.motionBlur.shutter.value = this.quality.motionBlur;
 		this.settings.adaptive = this.quality.name === 'mobile' && ! qs.has( 'scale' );
-		this.adaptiveResolution = new AdaptiveResolution( { initial: this.settings.renderScale } );
+		this.adaptiveResolution = new AdaptiveResolution( { initial: this.settings.renderScale, min: this.quality.minRenderScale ?? 0.5 } );
 
 		// ---------------------------------------------------------------- audio
 		// recorded field recordings (public/audio, credits in public/audio/CREDITS.md); ?noAudio turns it off
@@ -718,8 +718,8 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 
 	}
 
-	// Internal render resolution relative to the output (0.5..1), set by hand: changing it re-creates
-	// the scene / post / cloud targets, so nothing adjusts it automatically.
+	// Internal render resolution relative to the output (0.5..1). Changing it re-creates
+	// scene / post / cloud targets, so the adaptive controller only makes sparse adjustments.
 	setRenderScale( v ) {
 
 		if ( ! Number.isFinite( v ) ) return;

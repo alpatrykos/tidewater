@@ -509,13 +509,25 @@ const canopyDeform = ( lobes ) => /* wgsl */`
 	let flex = veg.y;
 	let flut = veg.z;
 	let ph = veg.w;
-	var P = ( v.model * vec4f( v.position, 1.0 ) ).xyz;
 	let isShrubI = iDat.y < 0.0;
 	var keep = 1.0;
 ${ lobes ? /* wgsl */`
 	// merged tree + shrub geometry: keep the parts of this instance's plant type
 	let isShrubPart = v.aMat.x > 3.5;
 	keep = select( 0.0, 1.0, isShrubPart == isShrubI );
+` : '' }
+	// Wrong plant parts and geometry beyond the near window already collapse to the base.
+	// Do that before lobe transforms, gust texture reads and wind deformation in every pass.
+	let dCam = length( vegParams.camPos - base );
+	let nearK = select( 0.0, 1.0, dCam < select( vegParams.canopyNear.x, vegParams.canopyNear.y, isShrubI ) * ( 1.0 + VEG_LOD_BAND / 2.0 ) );
+	if ( keep * nearK == 0.0 ) {
+		v.useWorld = true;
+		v.worldPos = base;
+		v.worldNormal = VEG_UP;
+		return;
+	}
+	var P = ( v.model * vec4f( v.position, 1.0 ) ).xyz;
+${ lobes ? /* wgsl */`
 	// leaf cards move towards their lobe centre by the variant's lobe scale (0: dropped lobe)
 	let lobe = v.aLobe;
 	let lk = select( 0.0, 1.0 - vegLobeScale( seed, lobe.w, isShrubI ), lobe.w >= 0.0 );
@@ -537,8 +549,6 @@ ${ lobes ? /* wgsl */`
 	let flutter = sin( t * 9.5 + ph * 50.0 + P.x * 1.9 + P.z * 2.3 ) * flut * sc * ( w * 0.035 + 0.005 );
 	let pos = P + vegWindDir3() * sway + vegWindPerp3() * swayP + VEG_UP * branch + N * flutter;
 	// near LOD: trees and shrubs hand over to the impostors at their own distance
-	let dCam = length( vegParams.camPos - base );
-	let nearK = select( 0.0, 1.0, dCam < select( vegParams.canopyNear.x, vegParams.canopyNear.y, isShrubI ) * ( 1.0 + VEG_LOD_BAND / 2.0 ) );
 	v.useWorld = true;
 	v.worldPos = base + ( pos - base ) * ( keep * nearK );
 	v.worldNormal = N;

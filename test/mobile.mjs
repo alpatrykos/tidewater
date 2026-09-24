@@ -33,6 +33,16 @@ const slow = new AdaptiveResolution( { initial: 0.7 } );
 let slowScale = 0.7;
 for ( let i = 0; i < 300; i++ ) slowScale = slow.update( 0.2 ) ?? slowScale;
 assert.equal( slowScale, 0.5 );
+// Mobile can protect image clarity without breaking manually selected lower scales.
+const sharp = new AdaptiveResolution( { initial: 1, min: 0.85 } );
+for ( let i = 0; i < 1800; i++ ) sharp.update( 1 / 30 );
+assert.equal( sharp.scale, 0.85, 'the clarity floor survives sustained slow frames' );
+sharp.scale = 0.7;
+sharp.reset();
+for ( let i = 0; i < 900; i++ ) sharp.update( 1 / 30 );
+assert.equal( sharp.scale, 0.7, 'slow frames must not raise a manually lowered scale' );
+for ( let i = 0; i < 7200; i++ ) sharp.update( 1 / 60 );
+assert.equal( sharp.scale, 1, 'headroom restores the full preset resolution' );
 const { Engine } = await import( '../src/engine/Engine.js' );
 let tick;
 globalThis.requestAnimationFrame = cb => { tick = cb; return 1; };

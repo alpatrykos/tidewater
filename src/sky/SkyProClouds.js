@@ -365,10 +365,14 @@ fn scFbm( uv: vec2f, profile: vec4f ) -> f32 {
 
 export class SkyProClouds {
 
-	constructor( renderer, atmosphere ) {
+	constructor( renderer, atmosphere, { shadowResolution = SHADOW_RES, shadowUpdateHz = 0 } = {} ) {
+
+		if ( ! Number.isInteger( shadowResolution ) || shadowResolution < 32 || shadowResolution % 32 !== 0 ) throw new RangeError( 'shadowResolution must be a positive multiple of 32' );
+		if ( ! Number.isFinite( shadowUpdateHz ) || shadowUpdateHz < 0 ) throw new RangeError( 'shadowUpdateHz must be finite and non-negative' );
 
 		this.renderer = renderer;
 		this.atmosphere = atmosphere;
+		this.shadowUpdateHz = shadowUpdateHz;
 		const P = PRESET, s = P.shape, l = P.lighting;
 
 		// ---- per-frame state (sky-pro Frame) and settings (sky-pro Settings)
@@ -418,7 +422,7 @@ export class SkyProClouds {
 		this.colors = [ t2( 'cloud history A' ), t2( 'cloud history B' ) ];
 		this.metas = [ t2( 'cloud history meta A' ), t2( 'cloud history meta B' ) ];
 		this.panorama = t2( 'cloud panorama', PANO_W, PANO_H );
-		this.shadowMap = t2( 'cloud shadow', SHADOW_RES, SHADOW_RES, 'r32float' );
+		this.shadowMap = t2( 'cloud shadow', shadowResolution, shadowResolution, 'r32float' );
 		this._pp = 0;
 		this.viewTex = this.colors[ 0 ];
 
@@ -437,6 +441,10 @@ export class SkyProClouds {
 		this._prevCam = null;
 		this._prevLight = new Vector3();
 		this._lastCoverage = - 1;
+		this._shadowInit = false;
+		this._shadowTimer = 0;
+		this._shadowPhase = 0;
+		this._shadowLight = new Vector3();
 
 	}
 
@@ -511,7 +519,8 @@ export class SkyProClouds {
 			viewTan: [ 'vec2f', new Vector2( 1, 1 ) ],
 			viewValid: [ 'f32', 0 ],
 			shadowCenter: [ 'vec2f', new Vector2() ],
-			shadowSize: [ 'f32', 12000 ],
+			// Smaller maps cover less distant scenery, retaining the same 46.875 m texels.
+			shadowSize: [ 'f32', 12000 * this.shadowMap.width / SHADOW_RES ],
 			shadowStrength: [ 'f32', 0.85 ],
 		}, { label: 'clouds' } );
 		const U = this.params.fields;
@@ -530,10 +539,10 @@ export class SkyProClouds {
 			code: /* wgsl */`
 // cloud shadow transmittance (1 = clear) at a world position. Manual bilinear filtering of an
 // unfilterable texture: costs no sampler in the (sampler hungry) scene materials.
-fn cloudsShadowTap( i: vec2i ) -> f32 { return textureLoad( cloudsShadowMap, clamp( i, vec2i( 0 ), vec2i( ${ SHADOW_RES - 1 } ) ), 0 ).x; }
+fn cloudsShadowTap( i: vec2i ) -> f32 { return textureLoad( cloudsShadowMap, clamp( i, vec2i( 0 ), vec2i( textureDimensions( cloudsShadowMap ) ) - 1 ), 0 ).x; }
 fn cloudsShadow( worldXZ: vec2f ) -> f32 {
 	let uv = ( worldXZ - cloudsParams.shadowCenter ) / cloudsParams.shadowSize + 0.5;
-	let st = uv * ${ f( SHADOW_RES ) } - 0.5;
+	let st = uv * vec2f( textureDimensions( cloudsShadowMap ) ) - 0.5;
 	let i0 = vec2i( floor( st ) );
 	let fr = fract( st );
 	let s = mix( mix( cloudsShadowTap( i0 ), cloudsShadowTap( i0 + vec2i( 1, 0 ) ), fr.x ), mix( cloudsShadowTap( i0 + vec2i( 0, 1 ) ), cloudsShadowTap( i0 + vec2i( 1, 1 ) ), fr.x ), fr.y );
@@ -853,6 +862,45 @@ ${ MAIN } {
 
 	}
 
+	_updateShadow( dt, camera ) {
+
+		this._shadowTimer -= dt;
+		const resolution = this.shadowMap.width, extent = this.shadowSize.value;
+		const cell = extent / resolution * 4;
+		const x = Math.round( camera.position.x / cell ) * cell;
+		const z = Math.round( camera.position.z / cell ) * cell;
+		const L = G.sunDir.value;
+		// Uniform changes include coverage, cloud shape and wind direction, but not the
+		// continuously advancing wind offset. Never combine rows with different coordinates.
+		this.settingsBlock._pack();
+		const cur = this.settingsBlock.u32;
+		const last = this._shadowSettings || ( this._shadowSettings = new Uint32Array( cur.length ) );
+		let full = ! this._shadowInit || extent !== this._shadowExtent
+			|| x !== this.shadowCenter.value.x || z !== this.shadowCenter.value.y
+			|| L.dot( this._shadowLight ) < 0.999;
+		for ( let i = 0; i < cur.length && ! full; i ++ ) full = cur[ i ] !== last[ i ];
+		if ( ! full && this._shadowTimer > 1e-6 ) return;
+
+		if ( full ) {
+
+			this.shadowCenter.value.set( x, z );
+			this._shadowExtent = extent;
+			this._shadowLight.copy( L );
+			last.set( cur );
+			this._shadowPhase = 0;
+			this._shadowInit = true;
+
+		}
+
+		this.F.shadow.value = [ x, z, extent, full ? - 1 : this._shadowPhase ];
+		this.shadowKernel.dispatch( [ resolution / 8, resolution / ( full ? 8 : 32 ), 1 ] );
+		if ( ! full ) this._shadowPhase = ( this._shadowPhase + 1 ) % 4;
+		const interval = this.shadowUpdateHz > 0 ? 1 / this.shadowUpdateHz : 0;
+		// Keep fractional timing between frames, without burst catch-up after a stall.
+		this._shadowTimer = full ? interval : Math.max( 0, this._shadowTimer + interval );
+
+	}
+
 	update( dt, camera ) {
 
 		const q = QUALITY, P = PRESET, F = this.F, S = this.S;
@@ -889,6 +937,7 @@ ${ MAIN } {
 			this.weatherKernel.dispatch( [ W / 8, W / 8, 1 ] );
 			this.boundsKernel.dispatch( [ 8, 8, 1 ] );
 			this.weatherDirty = false;
+			this._shadowInit = false;
 
 		}
 
@@ -982,27 +1031,9 @@ ${ MAIN } {
 
 		}
 
-		// ---- shadow map: a quarter of the rows per frame around a snapped centre
-		const phase = this.frameIndex % 4;
-		if ( phase === 0 || ! this._shadowInit ) {
-
-			const cell = this.shadowSize.value / SHADOW_RES * 4;
-			this.shadowCenter.value.set( Math.round( cp.x / cell ) * cell, Math.round( cp.z / cell ) * cell );
-
-		}
-
-		F.shadow.value = [ this.shadowCenter.value.x, this.shadowCenter.value.y, this.shadowSize.value, phase ];
-
 		// ---- dispatches
 		const underwater = G.cameraUnderwater && G.cameraUnderwater.value > 0.5;
-		if ( ! this._shadowInit ) {
-
-			// the whole map once
-			F.shadow.value = [ this.shadowCenter.value.x, this.shadowCenter.value.y, this.shadowSize.value, - 1 ];
-			this.shadowKernel.dispatch( [ SHADOW_RES / 8, SHADOW_RES / 8, 1 ] );
-			this._shadowInit = true;
-
-		} else this.shadowKernel.dispatch( [ SHADOW_RES / 8, SHADOW_RES / 32, 1 ] );
+		this._updateShadow( dt, camera );
 
 		if ( this.panoWarm ) {
 
@@ -1053,6 +1084,7 @@ ${ MAIN } {
 	invalidate() {
 
 		this.panoWarm = true;
+		this._shadowInit = false;
 		this.resetHistory();
 
 	}

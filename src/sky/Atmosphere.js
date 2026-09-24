@@ -141,6 +141,7 @@ export class Atmosphere {
 		this._build();
 		this.needsStatic = true;
 		this._irrPending = false;
+		this._irrDirty = true;
 		this._irrTimer = 0;
 		this.skyIrradiance = null;
 		this.sunTransmittance = null;
@@ -433,13 +434,17 @@ fn main( @builtin( global_invocation_id ) gid: vec3u ) {
 			label: 'Atmosphere Irradiance',
 			modules: [ this.module ],
 			bindings: { irr: { storage: this.irrBuffer, access: 'read_write' } },
-			workgroupSize: [ 1, 1, 1 ],
+			workgroupSize: [ 64, 1, 1 ],
 			code: /* wgsl */`
-@compute @workgroup_size( 1 )
-fn main() {
+// The same 256 hemisphere + 16 horizon samples, shared across a workgroup instead
+// of a single GPU lane. Only the floating-point summation order changes.
+var<workgroup> irrSky: array<vec3f, 64>;
+var<workgroup> irrHorizon: array<vec3f, 64>;
+@compute @workgroup_size( WG_X )
+fn main( @builtin( local_invocation_index ) lane: u32 ) {
 	var sum = vec3f( 0.0 );
-	const N = 16;
-	for ( var i = 0; i < N * N; i++ ) {
+	const N = 16u;
+	for ( var i = lane; i < N * N; i += 64u ) {
 		let a = ( f32( i % N ) + 0.5 ) / f32( N );
 		let b = ( f32( i / N ) + 0.5 ) / f32( N );
 		// cosine-weighted hemisphere
@@ -448,18 +453,28 @@ fn main() {
 		let dir = vec3f( r * cos( phi ), sqrt( max( 1.0 - b, 0.0 ) ), r * sin( phi ) );
 		sum += atmosphereSkyLuminance( dir );
 	}
-	// E = PI * mean(L) for cosine-weighted samples; store E/PI (radiance-equivalent irradiance)
-	irr[ 0 ] = vec4f( sum / f32( N * N ), 1.0 );
-	// sun transmittance at sea level for the current sun direction
-	let Ts = atmosphereSampleTransmittance( ATMO_RG + 0.001, atmosphereParams.sunDir.y );
-	irr[ 1 ] = vec4f( Ts, 1.0 );
-	// horizon color (average around the horizon)
-	var hs = vec3f( 0.0 );
-	for ( var i = 0; i < 16; i++ ) {
-		let phi = f32( i ) * ( 2.0 * PI / 16.0 );
-		hs += atmosphereSkyLuminance( normalize( vec3f( cos( phi ), 0.03, sin( phi ) ) ) );
+	irrSky[ lane ] = sum;
+	irrHorizon[ lane ] = vec3f( 0.0 );
+	if ( lane < 16u ) {
+		let phi = f32( lane ) * ( 2.0 * PI / 16.0 );
+		irrHorizon[ lane ] = atmosphereSkyLuminance( normalize( vec3f( cos( phi ), 0.03, sin( phi ) ) ) );
 	}
-	irr[ 2 ] = vec4f( hs / 16.0, 1.0 );
+	workgroupBarrier();
+	for ( var stride = 32u; stride > 0u; stride /= 2u ) {
+		if ( lane < stride ) {
+			irrSky[ lane ] += irrSky[ lane + stride ];
+			irrHorizon[ lane ] += irrHorizon[ lane + stride ];
+		}
+		workgroupBarrier();
+	}
+	if ( lane == 0u ) {
+		// E = PI * mean(L) for cosine-weighted samples; store E/PI.
+		irr[ 0 ] = vec4f( irrSky[ 0 ] / f32( N * N ), 1.0 );
+		// sun transmittance at sea level for the current sun direction
+		let Ts = atmosphereSampleTransmittance( ATMO_RG + 0.001, atmosphereParams.sunDir.y );
+		irr[ 1 ] = vec4f( Ts, 1.0 );
+		irr[ 2 ] = vec4f( irrHorizon[ 0 ] / 16.0, 1.0 );
+	}
 }
 `,
 		} );
@@ -496,16 +511,23 @@ fn main() {
 			last.set( cur );
 			this._svValid = true;
 			this.skyViewKernel.dispatch( [ SV_W / 8, Math.ceil( SV_H / 8 ), 1 ] );
+			this._irrDirty = true;
 
 		}
 
-		// periodically integrate irradiance and read it back for CPU-side uniforms/lights
+		// Integrate only a changed LUT, at most four times a second. A change made while
+		// an older readback is pending stays dirty until that result has been delivered.
 		this._irrTimer -= dt;
-		if ( this._irrTimer <= 0 && ! this._irrPending ) {
+		if ( this._irrDirty && this._irrTimer <= 0 && ! this._irrPending ) {
 
 			this._irrTimer = 0.25;
 			this.irradianceKernel.dispatch( 1 );
-			if ( this.readback.request( this.irrBuffer ) ) this._irrPending = true;
+			if ( this.readback.request( this.irrBuffer ) ) {
+
+				this._irrPending = true;
+				this._irrDirty = false;
+
+			}
 
 		}
 

@@ -252,8 +252,13 @@ ${ hasClip ? `	if ( vDepth < 1.0 ) {
 	let uprush = smoothstep( 0.46, 0.32, swTau );
 	let bead = smoothstep( -0.01, 0.05, frontD ) * smoothstep( 0.6, 0.12, frontD );
 	let trail = smoothstep( -0.01, 0.25, frontD ) * smoothstep( 2.2, 0.3, frontD );
-	// patchy along the front (dense bunches and thin stretches), not an even white rope
-	let edgePatch = ${ hasClip ? 'smoothstep( -0.45, 0.55, perlin2( pos.xz * 0.42 ) ) * 0.7 + smoothstep( -0.3, 0.6, perlin2( pos.xz * 1.7 + vec2f( 3.1, 7.7 ) ) ) * 0.3' : '1.0' };
+	// patchy along the front (dense bunches and thin stretches), not an even white rope.
+	// Past 40 cm depth the final foam weight is zero; the noise has no derivatives,
+	// so evaluating it only where it contributes preserves the shoreline filtering.
+	var edgePatch = 1.0;
+${ hasClip ? `	if ( vDepth < 0.4 ) {
+		edgePatch = smoothstep( -0.45, 0.55, perlin2( pos.xz * 0.42 ) ) * 0.7 + smoothstep( -0.3, 0.6, perlin2( pos.xz * 1.7 + vec2f( 3.1, 7.7 ) ) ) * 0.3;
+	}` : '' }
 	let edgeFoam = ( bead * mix( 0.45, 1.1, uprush ) * mix( 0.35, 1.0, edgePatch ) + trail * mix( 0.12, 0.4, uprush ) * edgePatch ) * smoothstep( 0.0, 1.0, swRt ) * smoothstep( 0.4, -0.2, vDepth );
 	// the meniscus: the last decimetre of the sheet bends down to the sand
 	let lipW = 1.0 - smoothstep( 0.0, 0.14, frontD );
@@ -410,7 +415,10 @@ ${ T ? `		let L0 = max( pos.y - terrainHeightAt( pos.xz ), 0.0 ) / tDown;
 			dR = select( sceneDepthC, dO, valid );
 			sceneCol = textureSampleLevel( waterSceneColor, smpLinearClamp, uvF, 0.0 ).rgb;
 		}
-		sceneCol = select( sceneCol, skyReflectionRadiance( normalize( vec3f( Tv.x, max( abs( Tv.y ), 0.03 ), Tv.z ) ) ), thruCrest );
+		// select evaluates both values: only trace the sky through a crest when the ray exits it.
+		if ( thruCrest ) {
+			sceneCol = skyReflectionRadiance( normalize( vec3f( Tv.x, max( abs( Tv.y ), 0.03 ), Tv.z ) ) );
+		}
 
 		// objects in front of the sea floor (pylons, rocks, reef) shorten the path
 		let qView = viewPositionFromViewZ( uvF, - viewDepth( dR ) );

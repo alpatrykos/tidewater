@@ -53,3 +53,20 @@ A separate local production-build tab on the same Pixel was loaded over USB. Tes
 The final 64-square build with corrected downstream filtering repeated 20.54 FPS over six seconds (125 rendered frames, median frame interval 50 ms, p95 50.3 ms). GPU and FPS measurements are separate short samples and can vary with clocks/temperature. This is approximately twice the original scene FPS, not a 60 FPS result or a sustained thermal test. Remaining rendering costs need separate optimization.
 
 Validation: the full test suite and production build passed. The added GPU test checks animation, finite values in all four cascades, every mip level against a box reduction, preservation of world-space filtering, and the inverse transform against an analytic two-dimensional cosine at every pixel for 64, 128 and 256 grids.
+
+## Rendering work and image clarity
+
+The next pass retains refraction, caustics, volumetric clouds, vegetation, foam and spray. It reduces work in these ways:
+
+- Mobile ocean patches use a 16-square grid instead of 32; terrain patches use 32 instead of 40. Their surface shading is unchanged, but curved silhouettes have fewer vertices.
+- Mobile cloud shadows cover 6 km instead of 12 km at the same 46.875 m texel spacing. A quarter of the rows updates at up to 15 Hz; camera-grid changes, settings changes and lighting changes invalidate the whole map. Visible volumetric clouds are unchanged.
+- Sky irradiance retains the same 272 samples, integrates them in parallel, and reuses the result until its source sky lookup changes.
+- Expired/empty or fully distance-faded spray slots skip billboard and lighting work. Water skips the second sky lookup when the refraction ray does not exit a crest, and skips shoreline noise where its contribution is exactly zero.
+
+Controlled GPU renders of the water changes were identical in surf, aerial and underwater views; the beach comparison differed in three color channels by 1/255 over 640×360 pixels. Spray comparison changed one channel by 1/255 and preserved all 2,701 foam deposits. These comparisons isolate the shader work avoidance, not the intentional geometry reduction. New GPU regressions cover irradiance equivalence and pending-readback invalidation, cloud-shadow crop equivalence and update phases, and spray lifetime/distance/intensity boundaries.
+
+The user requested a sharper render scale. Mobile now starts at 100% of the canvas resolution, with an 85% automatic floor; manual lower scales and URL overrides remain available. Previously it started at 70% and could automatically fall to 50%. This is relative to the CSS-sized canvas, not native device DPR. A warmed-up Pixel comparison of the previous build measured 16.66 FPS at 70% and 16.85 FPS at 100%, showing little benefit from reducing pixel count in that sample. These are six-second samples; they do not establish sustained performance or 60 FPS.
+
+Vegetation now skips wind/gust deformation for merged plant parts of the wrong kind and instances whose existing LOD/fade has already collapsed their geometry. It preserves visible density, wind motion, LOD thresholds and the main-camera rule used by shadow passes. A GPU regression instruments gust sampling to verify hidden vertices skip it while live kinds and shadow views retain their output.
+
+Final local build `index-DNe91wdr.js` measured **21.04 FPS at 100% render scale** at the same fixed camera (128 rendered frames over six seconds, median 50 ms, p95 50.2 ms, CPU sample 6.94 ms). The preceding public build measured **16.85 FPS at 100%** in the same session: approximately 25% higher FPS, with no reduction in render scale. The phone was warm (battery sensor reached 44.1 °C during the session); sequential samples are not temperature-controlled and do not prove a sustained gain. Shoreline, elevated and underwater views were checked on the physical Pixel. Full tests and production build passed.
