@@ -11,14 +11,14 @@ import { createPropMaterial } from './GameMaterials.js';
 export function createZubrCanModel() {
 
 	const group = new Group();
-	group.name = 'Żubr can';
-	const label = new Texture( { label: 'Żubr label loading', width: 1, height: 1, format: 'rgba8unorm-srgb', data: new Uint8Array( [ 7, 28, 17, 255 ] ) } );
+	group.name = 'Monster Energy can';
+	const label = new Texture( { label: 'Monster label loading', width: 1, height: 1, format: 'rgba8unorm-srgb', data: new Uint8Array( [ 7, 8, 7, 255 ] ) } );
 	const labelMaterial = standard( {
-		name: 'zubrPrintedAluminium', roughness: 0.3, metalness: 0.18,
+		name: 'monsterPrintedAluminium', roughness: 0.3, metalness: 0.18,
 		defines: { CLEARCOAT: 1 },
-		receiveShadows: false, textures: { zubrLabel: label },
+		receiveShadows: false, textures: { canLabel: label },
 		surface: /* wgsl */`
-	let print = textureSample( zubrLabel, smpLinearClamp, vec2f( in.uv.x, 1.0 - in.uv.y ) ).rgb;
+	let print = textureSample( canLabel, smpLinearClamp, vec2f( in.uv.x, 1.0 - in.uv.y ) ).rgb;
 	s.albedo = print;
 	// Small cold-can beads are relief in the lacquer, preserving every pixel of the wrap.
 	// Fade subpixel droplets before the normal derivatives so the highlight stays stable.
@@ -42,24 +42,22 @@ export function createZubrCanModel() {
 `,
 	} );
 	const body = new Mesh( new CylinderGeometry( 0.033, 0.033, 0.143, 48, 1, true, Math.PI ), labelMaterial );
-	body.name = 'Żubr green label';
+	body.name = 'Monster black and green label';
 	group.add( body );
 
 	const metal = new GeoKit();
 	const aluminium = { color: 0xd8dedc, rough: 0.26, metal: 0.88 };
 	const add = ( geo, options = {} ) => metal.add( 'metal', geo, { ...aluminium, ...options } );
 	// Drawn shoulders, double rolled seams, recessed lid and a shallow bottom dome.
-	add( cylinder( 0.0284, 0.033, 0.01, 48 ), { matrix: mat4( 0, 0.0765, 0 ), color: 0x082b19, metal: 0.42 } );
-	add( cylinder( 0.033, 0.0285, 0.01, 48 ), { matrix: mat4( 0, - 0.0765, 0 ), color: 0x082b19, metal: 0.42 } );
-	for ( const y of [ - 0.082, 0.0827 ] ) add( torus( 0.0288, 0.0016, 6, 48 ), { matrix: mat4( 0, y, 0, Math.PI / 2 ), color: 0xcac09a } );
+	add( cylinder( 0.0284, 0.033, 0.01, 48 ), { matrix: mat4( 0, 0.0765, 0 ), color: 0x080908, metal: 0.42 } );
+	add( cylinder( 0.033, 0.0285, 0.01, 48 ), { matrix: mat4( 0, - 0.0765, 0 ), color: 0x080908, metal: 0.42 } );
+	for ( const y of [ - 0.082, 0.0827 ] ) add( torus( 0.0288, 0.0016, 6, 48 ), { matrix: mat4( 0, y, 0, Math.PI / 2 ) } );
 	// A real cut-out lets the scored flap fold inside the can without revealing a second lid.
 	add( slab( ellipse( 0.0278, 0.0278, 0, 0, 56 ), [ ellipse( 0.0064, 0.0104, 0, 0.012, 32 ) ],
 		( x, z, side ) => new Vector3( x, side ? 0.0806 : 0.0818, z ) ), { rough: 0.35 } );
 	add( torus( 0.0238, 0.00045, 4, 40 ), { matrix: mat4( 0, 0.082, 0, Math.PI / 2 ), color: 0x969f9d } );
 	add( cylinder( 0.0265, 0.0265, 0.001, 40 ), { matrix: mat4( 0, - 0.0818, 0 ) } );
-	// Fine gold bands at either edge of the printed wrap.
-	for ( const y of [ - 0.07, 0.07 ] ) add( cylinder( 0.03315, 0.03315, 0.0014, 48, 1, true ), { matrix: mat4( 0, y, 0 ), color: 0xc5a45a, metal: 0.66 } );
-	const metalMaterial = createPropMaterial( 'zubrCanMetal' );
+	const metalMaterial = createPropMaterial( 'monsterCanMetal' );
 	metalMaterial.receiveShadows = false;
 	metalMaterial.surface += /* wgsl */`
 	// Shallow circular tooling marks catch the light across the aluminium top.
@@ -104,13 +102,13 @@ export function createZubrCanModel() {
 	group.add( tab );
 	group.tab = tab;
 	group.labelTexture = label;
-	// Load the reference-derived image before App precompiles the prop's pipelines.
+	// Load the generated wrap before App precompiles the prop's pipelines.
 	// Plain-node logic tests can build the geometry without a browser image decoder.
 	group.ready = typeof createImageBitmap === 'function' || globalThis.__assetImage
 		? loadLabel().then( texture => {
 
 			group.labelTexture = texture;
-			labelMaterial.bindings.zubrLabel.texture = texture;
+			labelMaterial.bindings.canLabel.texture = texture;
 			labelMaterial.needsUpdate = true;
 
 		} ) : Promise.resolve();
@@ -139,21 +137,21 @@ function ellipse( radiusX, radiusZ, x = 0, z = 0, segments = 32 ) {
 
 }
 
-// Generated with imagegen from the user's classic Żubr can photo. See public/models/zubr/README.md.
+// Generated with imagegen. See public/models/monster/README.md for provenance.
 async function loadLabel() {
 
-	const url = ( import.meta.env?.BASE_URL || '/' ) + 'models/zubr/label.png';
+	const url = ( import.meta.env?.BASE_URL || '/' ) + 'models/monster/label.png';
 	let bytes;
 	if ( globalThis.__assetFile ) bytes = await globalThis.__assetFile( url );
 	else {
 
 		const response = await fetch( url );
-		if ( ! response.ok ) throw new Error( 'Żubr label: ' + response.status );
+		if ( ! response.ok ) throw new Error( 'Monster label: ' + response.status );
 		bytes = await response.arrayBuffer();
 
 	}
 	const image = await decodeImage( new Uint8Array( bytes ), 'image/png' );
-	const texture = new Texture( { label: 'Żubr classic reference wrap', width: image.width, height: image.height,
+	const texture = new Texture( { label: 'Monster Energy generated wrap', width: image.width, height: image.height,
 		format: 'rgba8unorm-srgb', data: image.data, mips: true } );
 	texture.getGPU();
 	generateMipmaps( texture );

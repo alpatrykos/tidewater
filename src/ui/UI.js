@@ -2147,10 +2147,10 @@ export class UI {
 					</section>
 					<section>
 						<h3>Interact</h3>
-						${ row( k( 'E' ), 'Interact<small>Board, helm, step ashore, trade</small>' ) }
-						${ row( k( 'V' ), 'Boat camera<small>1st / 3rd person</small>' ) }
+						${ row( k( 'E' ), 'Interact<small>Board, helm, fly the helicopter, step ashore, trade</small>' ) }
+						${ row( k( 'V' ), 'Boat / helicopter camera<small>1st / 3rd person</small>' ) }
 						${ row( k( 'R' ), 'Fishing rod<small>Take out / put away</small>' ) }
-						${ row( k( 'B' ), 'Drink a fresh Żubr<small>Open, finish, toss the empty can. Repeat whenever ready</small>' ) }
+						${ row( k( 'B' ), 'Drink a fresh Monster<small>Open, finish, toss the empty can. Repeat whenever ready</small>' ) }
 						${ row( k( 'LMB' ), 'Cast, strike, reel<small>Hold to wind up / reel</small>' ) }
 						${ row( k( 'RMB' ), 'Reel in an empty line' ) }
 						${ row( k( 'I' ), 'Cooler and fish log' ) }

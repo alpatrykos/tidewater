@@ -197,7 +197,7 @@ ${ common }
 	let cyw = cos( yaw ); let syw = sin( yaw );
 	let C = base + vec3f( 0.0, Cy * si * sy, 0.0 ) + in.vs.vImp.xyz;
 	// world -> plant-local (unstretched, centred): rotate by -yaw, divide by the scale
-#if PASS_DEPTH
+#if PASS_DEPTH && !MAIN_DEPTH_PREPASS
 	// Orthographic sun rays: sample the atlas from the light direction, independent of
 	// cascade camera placement. The ray origin lies on this fragment's light ray.
 	let Ow = in.P - C + frame.sunDir * ( R * si * max( sy, 1.0 ) * 4.0 );
@@ -209,7 +209,7 @@ ${ common }
 	let scl = vec3f( si, si * sy, si );
 	let O = vec3f( Ow.x * cyw - Ow.z * syw, Ow.y, Ow.x * syw + Ow.z * cyw ) / scl;
 	let D = vec3f( Dw.x * cyw - Dw.z * syw, Dw.y, Dw.x * syw + Dw.z * cyw ) / scl;
-#if PASS_DEPTH
+#if PASS_DEPTH && !MAIN_DEPTH_PREPASS
 	let vdir = normalize( -D );
 #else
 	let vdir = normalize( O );
@@ -265,7 +265,7 @@ ${ common }
 	// LOD window: from the near plant's hand-over distance to the fade-out, else collapsed
 	let d = length( vegParams.camPos - base );
 ${ shadowFar ? /* wgsl */`
-#if PASS_DEPTH
+#if PASS_DEPTH && !MAIN_DEPTH_PREPASS
 	let vis = select( 0.0, 1.0, d >= ( ${ nearDist( 'g1Flag' ) } ) * ( 1.0 - VEG_LOD_BAND / 2.0 ) && d < ${ shadowEnd } * ( 1.0 + VEG_LOD_BAND / 2.0 ) );
 	if ( vis == 0.0 ) { v.useWorld = true; v.worldPos = base; v.worldNormal = VEG_UP; return; }
 #else
@@ -289,7 +289,7 @@ ${ shadowFar ? '#endif' : '' }
 	o.vImp = vec4f( swayV, s );
 	o.vIPos4 = iPos;
 	o.vIDat = iDat;
-#if PASS_DEPTH
+#if PASS_DEPTH && !MAIN_DEPTH_PREPASS
 	let toCam = normalize( frame.sunDir );
 #else
 	let toCam = normalize( frame.cameraPos - Cs );
@@ -329,12 +329,20 @@ ${ sampleImpostor }
 	s.specularIntensity = 0.12;
 	// backlit crowns glow at the edges (light through the leaves), like the near canopy
 	s.translucency = vegTranslucency( albedo, in.N, 0.35, in.P );`,
-			shadow: shadowFar ? sampleImpostor + /* wgsl */`
+			// the main camera's depth pre-pass takes the colour pass' own cut-out
+			shadow: sampleImpostor + /* wgsl */`
+#if MAIN_DEPTH_PREPASS
+	return vA.w > 0.42 && bayer4( in.pixel ) < fade;
+#else
+` + ( shadowFar ? /* wgsl */`
 	let farD = ${ shadowEnd };
 	let farFade = smoothstep( farD * ( 1.0 - VEG_LOD_BAND / 2.0 ), farD * ( 1.0 + VEG_LOD_BAND / 2.0 ), length( vegParams.camPos - base ) );
 	let threshold = bayer4( in.pixel );
-	return vA.w > 0.42 && threshold < fade && threshold >= farFade;` : '',
+	return vA.w > 0.42 && threshold < fade && threshold >= farFade;` : /* wgsl */`
+	return vA.w > 0.42;` ) + `
+#endif`,
 		} );
+		mat.depthPrepass = true;
 
 		// frame sampler: the frame's direction, the view ray re-projected on its plane
 		mat.modules.push( new ( vegModule.constructor )( {

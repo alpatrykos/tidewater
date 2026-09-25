@@ -14,7 +14,7 @@ export class TouchControls {
 			<div class="touch-actions"><button data-key="KeyE">Interact</button><button data-key="KeyR">Rod</button>
 			<button data-action="primary" class="touch-primary">Cast</button><button data-action="secondary">Retrieve</button>
 			<button data-key="Space">Jump / Up</button><button data-key="KeyC">Dive</button>
-			<button data-key="ShiftLeft">Sprint</button><button data-key="KeyB" aria-label="Open and drink Żubr, then toss the empty can">Drink Żubr</button><button data-key="KeyV">Boat camera</button></div>
+			<button data-key="ShiftLeft">Sprint</button><button data-key="KeyB" aria-label="Open and drink Monster, then toss the empty can">Monster</button><button data-key="KeyV">Boat camera</button></div>
 			<div class="touch-tools"><button data-key="KeyI">Cooler</button><button data-key="KeyL">Light</button><button data-action="settings">Settings</button></div>
 			<div class="touch-hint">Left stick to move · drag the scene to look</div>`;
 		document.body.append( this.root );
@@ -124,7 +124,7 @@ export class TouchControls {
 		this.primary.setAttribute( 'aria-label', label );
 		this.retrieve.hidden = ! game.rod.equipped;
 		this.rod.disabled = !! can?.busy;
-		this.boatCamera.hidden = this.app.player.mode !== 'boat';
+		this.boatCamera.hidden = this.app.player.mode !== 'boat' && this.app.player.mode !== 'heli';
 		this.drink.hidden = this.app.player.mode === 'boat';
 		this.drink.disabled = ! can?.available || ! game.canDrink;
 	}

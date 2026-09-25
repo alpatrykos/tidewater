@@ -30,6 +30,8 @@ breach. It runs directly on WebGPU and WGSL with its own small rendering engine,
 - Joe's fish stand buys your catch; Marta's chandlery sells line, reels, rods, a bigger hold, fuel, a rebuilt
   engine, a fish finder and deck floodlights for night fishing.
 - Walk the deck and the wheelhouse while the boat drifts; the boat burns fuel.
+- Fly a single-seat open-frame helicopter from its pad on the beach: the mouse turns it, W A S D tilt the
+  rotor, Space / C climb and descend, Shift flies fast. Land on the sand, the pier or the sea and press E to get out.
 - A first-play guide, contextual tips and a minimap. Progress is saved in the browser.
 
 **Ocean**
@@ -81,10 +83,10 @@ breach. It runs directly on WebGPU and WGSL with its own small rendering engine,
 | Shift | Sprint / boat boost |
 | Space | Jump / swim up |
 | C | Crouch / dive |
-| E | Interact: board the boat, take or leave the helm, step ashore, trade with the fish buyer or the chandlery |
-| V | Boat camera at the helm (1st / 3rd person) |
+| E | Interact: board the boat, take or leave the helm, fly the helicopter, step ashore, trade with the fish buyer or the chandlery |
+| V | Boat / helicopter camera (1st / 3rd person) |
 | R | Take out / put away the fishing rod |
-| B | Open a fresh Żubr, finish it, then toss the empty can (unlimited supply) |
+| B | Open a fresh Monster, finish it, then toss the empty can (unlimited supply) |
 | Left mouse | Hold to wind up, release to cast · strike when a fish takes the bait · hold to reel |
 | Right mouse | Reel an empty line in |
 | I or Tab | Cooler / fish hold and the fish log |

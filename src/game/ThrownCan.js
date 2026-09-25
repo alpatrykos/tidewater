@@ -13,7 +13,7 @@ export class ThrownCan {
 		this.audio = audio;
 		this.model = template ? template.model.clone( true ) : createZubrCanModel();
 		this.ready = template ? template.ready : this.model.ready;
-		this.model.name = 'Discarded empty Żubr can';
+		this.model.name = 'Discarded empty Monster can';
 		this.model.visible = false;
 		if ( ! template ) {
 

@@ -23,6 +23,9 @@ export const WORLD = {
 	// Where the boat is moored: east side of the pier head, bow pointing south.
 	boatDock: { position: new THREE.Vector3( 64.5, 0, 36.5 ), heading: 0 },
 
+	// the helicopter's pad: open, level sand below the village, a short walk from the start
+	helicopter: { position: new THREE.Vector3( 62, 0, - 84 ), yaw: Math.PI * 0.75 },
+
 	village: { center: new THREE.Vector3( 40, 0, - 118 ), radius: 95 },
 
 	reef: { center: new THREE.Vector3( - 78, 0, 58 ), radius: 58 },

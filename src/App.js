@@ -29,6 +29,7 @@ import { Colliders } from './world/Colliders.js';
 import { Village } from './world/Village.js';
 import { Reef } from './world/Reef.js';
 import { BoatModel } from './world/BoatModel.js';
+import { HeliModel } from './world/HeliModel.js';
 import { Rocks } from './world/Rocks.js';
 import { Debris } from './world/Debris.js';
 import { Wildlife } from './world/wildlife/Wildlife.js';
@@ -64,6 +65,7 @@ import { STAND } from './game/FishStand.js';
 import { CHANDLERY } from './game/Chandlery.js';
 import { BoatController } from './player/BoatController.js';
 import { BoatSpray } from './player/BoatSpray.js';
+import { HeliController } from './player/HeliController.js';
 import { WakeSim } from './ocean/WakeSim.js';
 import { Vegetation } from './world/Vegetation.js';
 import { SoundScape } from './audio/SoundScape.js';
@@ -231,6 +233,8 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		// sunlight bounced off the ground (one diffuse bounce, re-baked with the terrain sun shadow)
 		installGroundBounce( { terrain: this.terrainGPU, clouds: this.clouds } );
 		this.sceneRenderer = new SceneRenderer( engine.meshRenderer, scene, camera );
+		// ?prepass=0 disables the foliage depth pre-pass (for A/B comparisons)
+		this.sceneRenderer.depthPrepass = qs.get( 'prepass' ) !== '0';
 		// the water's refraction source: the scene below the water only, half resolution
 		this.refraction = new RefractionPass( { meshRenderer: engine.meshRenderer, scene, camera, sceneRenderer: this.sceneRenderer, scale: this.quality.refractionScale } );
 		this.sceneRenderer.onBeforeWater = () => this.refraction.render( G.seaLevel.value );
@@ -298,6 +302,14 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		scene.add( this.airMotes.mesh );
 		this.boatCtl = new BoatController( { model: this.boat, query: this.query, terrain: this.terrainData, colliders: this.colliders } );
 		this.boatSpray = new BoatSpray( { boat: this.boatCtl, spray: this.spray } );
+		// the single-seat helicopter parked on the beach (E next to it to fly)
+		this.heli = new HeliModel();
+		scene.add( this.heli.group );
+		underwaterMode( this.heli.group, 'lite' );
+		this.heliCtl = new HeliController( {
+			model: this.heli, terrain: this.terrainData, colliders: this.colliders, query: this.query, spray: this.spray,
+			position: WORLD.helicopter.position, yaw: WORLD.helicopter.yaw,
+		} );
 		// humpback cruising the deep water around the island (model fetched from public/models/whale)
 		this.whale = new Whale( { scene, terrain: this.terrainData, query: this.query, spray: this.spray } );
 		try {
@@ -315,7 +327,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		// interactive wake around the boat (Kelvin pattern, bow/stern waves, prop wash foam)
 		this.wake = new WakeSim( renderer, { terrainGPU: this.terrainGPU, boat: this.boatCtl, colliders: this.colliders } );
 		this.surface.wake = this.wake;
-		this.player = new Player( { camera, input: this.input, terrain: this.terrainData, colliders: this.colliders, query: this.query, boat: this.boatCtl, reef: this.reef } );
+		this.player = new Player( { camera, input: this.input, terrain: this.terrainData, colliders: this.colliders, query: this.query, boat: this.boatCtl, heli: this.heliCtl, reef: this.reef } );
 		// birds, beach crabs, sanderlings and inland boars (after spray / query / boat, which they use)
 		this.wildlife = new Wildlife( {
 			scene, renderer, terrain: this.terrainData, terrainGPU: this.terrainGPU, shore: this.shore,
@@ -324,7 +336,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		} );
 		await this.wildlife.boarBatch.ready;
 		// moving receivers: last frame's depth no longer lines up with them (see installContactShadows)
-		for ( const o of [ this.whale && this.whale.group, this.wildlife.birdBatch.mesh, this.wildlife.critterBatch.mesh, this.wildlife.boarBatch.mesh ] ) if ( o ) ContactShadows.skipRoots.add( o );
+		for ( const o of [ this.heli.group, this.whale && this.whale.group, this.wildlife.birdBatch.mesh, this.wildlife.critterBatch.mesh, this.wildlife.boarBatch.mesh ] ) if ( o ) ContactShadows.skipRoots.add( o );
 		this.freeCam = qs.has( 'fly' );
 
 		// ---------------------------------------------------------------- post
@@ -527,7 +539,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 			this.fly.setPose( this.camera.position.clone(), e.y, e.x );
 			this.fly.velocity.set( 0, 0, 0 );
 
-		} else if ( this.player.mode !== 'boat' && this.player.mode !== 'deck' ) {
+		} else if ( this.player.mode !== 'boat' && this.player.mode !== 'deck' && this.player.mode !== 'heli' ) {
 
 			this.dropPlayerAtCamera();
 
@@ -645,6 +657,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		this.boatCtl.update( dt );
 		this.boatSpray.update( dt );
 		this.wake.update( dt );
+		this.heliCtl.update( dt, this.player.waterH );
 		if ( this.freeCam ) this.fly.update( dt );
 		else this.player.update( dt );
 		this.game.update( dt );
@@ -660,6 +673,7 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 		this.seaDetail.update( dt );
 		this.query.setCamera( this.camera.position.x, this.camera.position.z );
 		this.boatCtl.queueQueries();
+		this.heliCtl.queueQuery();
 		this.query.update();
 		if ( this.query.cpuValid ) {
 
@@ -756,7 +770,11 @@ fn terrainWetness( xz: vec2f, h: f32 ) -> vec2f {
 			windDir: G.windDir.value,
 			daylight: 1 - G.night.value,
 			nearPier: Math.abs( p.x - WORLD.pier.x ) < 12 && p.z > WORLD.pier.zStart - 5 && p.z < WORLD.pier.zEnd + 8,
-			boat: {
+			// the helicopter's engine plays through the boat engine's channel (no water sounds in the air)
+			boat: this.player.mode === 'heli' ? {
+				active: true, rpm: 0.35 + 0.65 * this.heliCtl.spool, throttle: 1, speed: 0, air: true,
+				position: this.heli.group.position, listenerInside: this.player.heliCam === 'first',
+			} : {
 				active: this.boatCtl.driven, rpm: this.boatCtl.rpm, throttle: this.boatCtl.throttle, speed: this.boatCtl.velocity.length(),
 				position: this.boat.group.position, listenerInside: this.player.mode === 'boat' && this.player.camMode === 'first',
 			},

@@ -25,7 +25,7 @@ const CATCH_CARD_MS = 9000;
 //   RMB        reel an empty line back in
 //   I / Tab    cooler / hold contents and the fish log
 //   E          at the fish stand: sell your catch
-//   B          open Żubr, drink it all, then throw the empty can
+//   B          open Monster, drink it all, then throw the empty can
 export class Game {
 
 	constructor( app ) {
@@ -321,7 +321,7 @@ export class Game {
 
 		// prompts when the player has nothing to say
 		if ( this.drink.busy ) p.prompt = { key: '…', text: {
-			drawing: 'Taking out Żubr', opening: 'Opening Żubr', drinking: 'Drinking Żubr', throwing: 'Tossing the empty can',
+			drawing: 'Taking out Monster', opening: 'Opening Monster', drinking: 'Drinking Monster', throwing: 'Tossing the empty can',
 		}[ this.drink.state ] };
 		else if ( ! p.prompt && can ) p.prompt = this.prompt();
 
@@ -350,8 +350,8 @@ export class Game {
 
 			// by the water (boat deck, pier, the wet beach, wading): suggest the rod
 			const byWater = p.mode === 'deck' || ( p.mode === 'walk' && [ 'wood', 'wetsand', 'water' ].includes( p.surface ) );
-			const drinkHint = this.app.input.touchMode ? 'Drink Żubr' : 'B  drink Żubr';
-			return byWater ? { key: 'R', text: `Take out the rod   ·   ${ drinkHint }` } : { key: 'B', text: 'Open & drink Żubr' };
+			const drinkHint = this.app.input.touchMode ? 'Drink Monster' : 'B  drink Monster';
+			return byWater ? { key: 'R', text: `Take out the rod   ·   ${ drinkHint }` } : { key: 'B', text: 'Open & drink Monster' };
 
 		}
 

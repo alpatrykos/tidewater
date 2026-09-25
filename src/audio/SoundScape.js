@@ -160,7 +160,7 @@ export class SoundScape {
 			lx: 0, ly: 1.7, lz: 0, fx: 0, fy: 0, fz: - 1, ux: 0, uy: 1, uz: 0,
 			u: 0, depth: 0, surf: 0.5, shoreDist: 60, onLand: true, wind: 7, day: 1, nearPier: false, hour: null,
 			shoreX: 0, shoreZ: 1,
-			boat: { active: false, rpm: 0, speed: 0, x: 0, y: 0, z: 0, inside: false },
+			boat: { active: false, rpm: 0, speed: 0, x: 0, y: 0, z: 0, inside: false, air: false },
 		};
 		const sw = WORLD.swellDir || { x: - 0.12, y: - 1 };
 		const l = Math.hypot( sw.x, sw.y ) || 1;
@@ -1109,6 +1109,7 @@ export class SoundScape {
 		eb.y = num( bp.y, eb.y );
 		eb.z = num( bp.z, eb.z );
 		eb.inside = !! b.listenerInside;
+		eb.air = !! b.air;
 		e.onLand = typeof s.coastDistance === 'number' && Number.isFinite( s.coastDistance ) ? s.coastDistance < 0 : true;
 		if ( e.u > 0.01 || eb.active ) e.onLand = false;
 
@@ -1205,7 +1206,7 @@ export class SoundScape {
 		// lapping at rest, chop slapping the hull while running
 		this._engine += ( ( this._engineOn ? 1 : 0 ) - this._engine ) * ( 1 - Math.exp( - dt * ( this._engineOn ? 3 : 1.2 ) ) );
 		const bd = Math.hypot( eb.x - e.lx, eb.z - e.lz );
-		const nearBoat = eb.active || bd < 60;
+		const nearBoat = ! eb.air && ( eb.active || bd < 60 );
 		const eng = this._engine, rpm = eb.rpm;
 		this._bed( 'boat_engine', dB( lerp( MIX.engineIdle, MIX.engineRun, Math.pow( rpm, 0.8 ) ) ) * eng / dB( BANK.boat_engine.lufs ), now, 0.12,
 			( 0.8 + 0.85 * rpm ) * lerp( 0.75, 1, eng ) );

@@ -431,7 +431,7 @@ export function createPlantLeafMaterial( { shadowEnd = null } = {} ) {
 		attributes: PLANT_ATTRIBUTES,
 		varyings: { vTrunkY: 'f32', vTrunkT: 'vec3f', vMat: 'vec4f', vIDat: 'vec4f', vIPos: 'vec3f' },
 		vertex: ( shadowEnd === null ? '' : /* wgsl */`
-#if PASS_DEPTH
+#if PASS_DEPTH && !MAIN_DEPTH_PREPASS
 	// The mobile far palm only replaces shadows inside the previous detailed-palm range.
 	if ( length( vegParams.camPos - v.iPos.xyz ) >= ${ f( shadowEnd ) } * ( 1.0 + VEG_LOD_BAND / 2.0 ) ) {
 		v.useWorld = true; v.worldPos = v.iPos.xyz; v.worldNormal = VEG_UP; return;
@@ -492,9 +492,15 @@ export function createPlantLeafMaterial( { shadowEnd = null } = {} ) {
 	s.metalness = 0.0;
 	s.specularIntensity = select( select( 0.4, 0.3, isStem ), 0.42, isBroad );
 	s.translucency = select( vec3f( 0.0 ), vegTranslucency( albedo, in.N, select( 0.3, 0.2, isBroad ), in.P ), isLeaf );`,
+		// the main camera's depth pre-pass takes the colour pass' own cut-out
 		shadow: shadowEnd === null ? 'return vegPlantMask( in );' : /* wgsl */`
-	return vegPlantMask( in ) && vegLodDither( in.vs.vIPos, vec3f( 0.0, ${ f( shadowEnd ) }, ${ f( shadowEnd + 0.01 ) } ), in.pixel );`,
+#if MAIN_DEPTH_PREPASS
+	return vegPlantMask( in );
+#else
+	return vegPlantMask( in ) && vegLodDither( in.vs.vIPos, vec3f( 0.0, ${ f( shadowEnd ) }, ${ f( shadowEnd + 0.01 ) } ), in.pixel );
+#endif`,
 	} );
+	mat.depthPrepass = true;
 	return mat;
 
 }
@@ -718,6 +724,7 @@ export function createCanopyMaterial( leafAtlas ) {
 	s.translucency = select( vegTranslucency( albedo, geoN, 0.5, in.P ) * ( ao * 0.6 + 0.4 ), vec3f( 0.0 ), isBark );`,
 		shadow: 'return vegCanopyMask( in, vegCanopyLeaf( in ) );',
 	} );
+	mat.depthPrepass = true;
 	return mat;
 
 }

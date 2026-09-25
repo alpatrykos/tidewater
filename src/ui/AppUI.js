@@ -263,12 +263,13 @@ export class AppUI {
 
 		const mode = p.mode === 'boat' ? `Boat · ${ p.camMode === 'first' ? '1st' : '3rd' } person`
 			: p.mode === 'deck' ? 'On deck'
+			: p.mode === 'heli' ? `Helicopter · ${ p.heliCam === 'first' ? '1st' : '3rd' } person`
 			: p.mode === 'swim' ? ( app.camera.position.y < ( app.cameraWaterHeight ?? 0 ) - 0.3 ? 'Diving' : 'Swimming' ) : 'Walking';
 		ui.setMode( mode );
 		if ( p.prompt ) {
 			let { key, text } = p.prompt;
 			if ( app.input.touchMode ) {
-				key = ( { E: 'Interact', R: 'Rod', B: 'Drink Żubr', LMB: app.game.fight ? 'Reel' : 'Cast', RMB: 'Retrieve', Space: 'Up' } )[ key ] || key;
+				key = ( { E: 'Interact', R: 'Rod', B: 'Monster', LMB: app.game.fight ? 'Reel' : 'Cast', RMB: 'Retrieve', Space: 'Up' } )[ key ] || key;
 				text = text.replace( /right-click/g, 'tap Retrieve' ).replace( /R  put the rod away/g, 'Rod to put away' ).replace( /V  camera/g, 'Boat camera' );
 			}
 			ui.setPrompt( key, text );
